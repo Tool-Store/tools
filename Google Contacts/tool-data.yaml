@@ -1,0 +1,179 @@
+name: "Google Contacts"
+slug: "google-contacts"
+short_description: "Manage your Google Contacts via MCP: search, read, update, delete, birthdays, export."
+long_description: |
+  An MCP tool that connects to your Google account (via Tool Store activation)
+  to search, view, update, and delete contacts, retrieve today’s birthdays,
+  and export contacts to CSV into Tool Store storage. Uses Google People API.
+version: "1.0.0"
+content_rating: "everyone"
+
+categories:
+  - "productivity"
+  - "crm"
+tags:
+  - "google"
+  - "contacts"
+  - "people-api"
+  - "export"
+
+actions:
+  - "create contact"
+  - "search contacts"
+  - "get contact details"
+  - "update contact"
+  - "delete contact"
+  - "get todays birthdays"
+  - "export contacts"
+  - "export contacts vcf"
+  - "import contacts vcf"
+
+website: "https://toolstore.com"
+support_email: "support@toolstore.com"
+
+pricing:
+  type: "free"
+
+functions:
+  - name: "create_contact"
+    description: "Create a new contact with optional fields and photo."
+    parameters:
+      type: "object"
+      properties:
+        given_name:
+          type: "string"
+        family_name:
+          type: "string"
+        email:
+          type: "string"
+        phone:
+          type: "string"
+        birthday:
+          type: "string"
+          description: "ISO date yyyy-mm-dd or --mm-dd"
+        photo_url:
+          type: "string"
+          description: "Public URL of the contact photo to set after creation."
+        note:
+          type: "string"
+  - name: "search_contacts"
+    description: "Search contacts by text query over names, emails, phones. Returns a concise listing."
+    parameters:
+      type: "object"
+      properties:
+        query:
+          type: "string"
+          description: "Search text; matches names, email addresses, phone numbers."
+        page_size:
+          type: "integer"
+          description: "Max results per page (default 50, max 200)."
+        page_token:
+          type: "string"
+          description: "Page token for pagination."
+      required: ["query"]
+
+  - name: "get_contact_details"
+    description: "Get full details for a contact by resource name (e.g., people/c123)."
+    parameters:
+      type: "object"
+      properties:
+        resource_name:
+          type: "string"
+          description: "Google People resource name, e.g., people/c123."
+      required: ["resource_name"]
+
+  - name: "update_contact"
+    description: "Update a contact’s fields by resource name. Merges provided fields."
+    parameters:
+      type: "object"
+      properties:
+        resource_name:
+          type: "string"
+          description: "Google People resource name, e.g., people/c123."
+        given_name:
+          type: "string"
+        family_name:
+          type: "string"
+        email:
+          type: "string"
+        phone:
+          type: "string"
+        birthday:
+          type: "string"
+          description: "ISO date yyyy-mm-dd (no year allowed by Google is ok)."
+        photo_url:
+          type: "string"
+          description: "Public URL to a photo to set for the contact."
+        note:
+          type: "string"
+      required: ["resource_name"]
+
+  - name: "delete_contact"
+    description: "Delete a contact by resource name."
+    parameters:
+      type: "object"
+      properties:
+        resource_name:
+          type: "string"
+          description: "Google People resource name, e.g., people/c123."
+      required: ["resource_name"]
+
+  - name: "get_todays_birthdays"
+    description: "Return contacts whose birthdays match today’s month and day."
+    parameters:
+      type: "object"
+      properties: {}
+
+  - name: "export_contacts"
+    description: "Export all contacts to CSV and upload to Tool Store storage. Returns storage path and download information."
+    parameters:
+      type: "object"
+      properties:
+        file_name:
+          type: "string"
+          description: "Target CSV file name (default: contacts-export.csv)."
+
+  - name: "export_contacts_vcf"
+    description: "Export all contacts to a VCF file and upload to Tool Store storage."
+    parameters:
+      type: "object"
+      properties:
+        file_name:
+          type: "string"
+          description: "Target VCF file name (default: contacts-export.vcf)."
+
+  - name: "import_contacts_vcf"
+    description: "Import contacts from a VCF file. Provide either file_url or storage_file_name."
+    parameters:
+      type: "object"
+      properties:
+        file_url:
+          type: "string"
+          description: "Public URL to a .vcf file."
+        storage_file_name:
+          type: "string"
+          description: "Path in Tool Store storage for the current user to import from."
+        limit:
+          type: "integer"
+          description: "Optional maximum number of contacts to import."
+
+resources:
+  - name: "contact_photos"
+    description: "Access URLs for contact photos returned by People API."
+    uri_template: "photos://{resource_name}"
+
+activation:
+  steps:
+    - type: "oauth2"
+      title: "1. Connect your Google account"
+      description: "Authorize access to your Google Contacts via the Tool Store."
+      required: true
+      config:
+        provider: "google"
+        scopes:
+          - "https://www.googleapis.com/auth/contacts"
+          - "https://www.googleapis.com/auth/contacts.readonly"
+        redirect_uri: "https://api.toolstore.com/oauth/callback"
+    - type: "form"
+      title: "2. Confirm permissions"
+      description: "Grant the tool permission to read and manage your contacts."
