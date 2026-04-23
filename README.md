@@ -1,6 +1,29 @@
 # Tool Store Tools
-This repo is for open source tools that can be used in the Tool Store ecosystem. Please use these as examples on how to build more tools.
+This repo contains open-source Tool Store tool projects. Each tool folder is a separate project and may use a different programming language, runtime, dependency set, packaging flow, and third-party integration pattern. Use the tools in this repo as examples for how to build additional Tool Store-compatible tools.
 
+## Vibe Code Template
+
+**Vibe Code happens at the TOOL LEVEL, not the repo level.** Each tool folder contains its own PROJECT.md, ARCHITECTURE_INDEX.md, and PLAN.md that drive development.
+
+### Tool-Level Workflow
+
+1. Select the tool you want to work on (e.g., `Google Contacts/`)
+2. Read that tool's PROJECT.md for capabilities and constraints
+3. Check that tool's ARCHITECTURE_INDEX.md for code organization
+4. Review/update that tool's PLAN.md for active work
+5. Make changes following that tool's local conventions
+
+### Repo-Level Docs (Indexes Only)
+
+- `docs/PROJECT.md` - Index of all tool PROJECT.md files
+- `docs/ARCHITECTURE_INDEX.md` - Index of all tool ARCHITECTURE_INDEX.md files  
+- `docs/PLAN.md` - Index of all tool PLAN.md files
+
+Repo-level docs only need updates when adding a new tool to the repository.
+
+### Operating Rules
+
+See `.agent/AGENT.md` for the tool-first operating workflow.
 
 # Tool Store Developer Documentation
 
@@ -25,19 +48,23 @@ The Tool Store is a marketplace for AI tools that integrates with the Model Cont
 
 ## Getting Started
 
+This repo does not represent one shared application runtime. Start by identifying the specific tool project you want to inspect or change, then follow that tool project's own setup and verification flow.
+
 ### Prerequisites
 
 - Firebase account for authentication
 - Tool Store developer account
-- Basic understanding of YAML, Python, and REST APIs
+- Basic understanding of YAML and REST APIs
+- The language/runtime knowledge required by the specific tool project you are working on
 - Understanding of the Model Context Protocol (MCP)
 
 ### Development Environment Setup
 
 1. **Authentication**: Register as a developer through the UI API
 2. **API Access**: Obtain API keys for Developer API access
-3. **Tool Development**: Prepare your tool code and configuration
-4. **Testing**: Use the provided endpoints to test your tool integration
+3. **Select a Tool Project**: Choose the tool folder you want to build or modify
+4. **Tool Development**: Prepare that tool project's code, dependencies, and configuration
+5. **Testing**: Use the selected tool project's local verification flow and the provided endpoints to test integration
 
 ---
 
