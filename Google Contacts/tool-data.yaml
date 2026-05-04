@@ -165,7 +165,7 @@ resources:
 activation:
   steps:
     - type: "oauth2"
-      title: "1. Connect your Google account"
+      title: "Connect your Google account"
       description: "Authorize access to your Google Contacts via the Tool Store."
       required: true
       config:
@@ -175,5 +175,45 @@ activation:
           - "https://www.googleapis.com/auth/contacts.readonly"
         redirect_uri: "https://api.toolstore.com/oauth/callback"
     - type: "form"
-      title: "2. Confirm permissions"
-      description: "Grant the tool permission to read and manage your contacts."
+      title: "Account Details"
+      description: "Provide details for the new account."
+      fields:
+        - label: "Account Name"
+          helper_text: "When requesting for this particular account, what would you cal this account?"
+          placeholder: "Personal, gmail, work, etc."
+          type: "text"
+          required: true
+        - label: "Priority order"
+          helper_text: "In what order should we prioritize this account when requesting contacts?"
+          placeholder: "order"
+          type: "number"
+          required: true
+
+processes:
+  - name: "Add Account"
+    description: "Add a new Google account to the tool."
+    steps:
+      - type: "oauth2"
+        title: "Connect Google Account"
+        description: "Authorize access to your Google Contacts."
+        required: true
+        config:
+          provider: "google"
+          scopes:
+            - "https://www.googleapis.com/auth/contacts"
+            - "https://www.googleapis.com/auth/contacts.readonly"
+          redirect_uri: "https://api.toolstore.com/oauth/callback"
+      - type: "form"
+        title: "Account Details"
+        description: "Provide details for the new account."
+        fields:
+          - label: "Account Name"
+            helper_text: "When requesting for this particular account, what would you cal this account?"
+            placeholder: "Personal, gmail, work, etc."
+            type: "text"
+            required: true
+          - label: "Priority order"
+            helper_text: "In what order should we prioritize this account when requesting contacts?"
+            placeholder: "order"
+            type: "number"
+            required: true
