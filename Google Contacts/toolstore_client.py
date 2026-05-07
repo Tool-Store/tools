@@ -1,5 +1,6 @@
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Tuple
 
 import requests
@@ -20,13 +21,19 @@ class ToolStoreClient:
     - TOOLSTORE_OAUTH_TOKEN_ENDPOINT (optional): Endpoint for exchanging refresh tokens.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        jwt: Optional[str] = None,
+        user_id: Optional[str] = None,
+        user_slug: Optional[str] = None,
+    ) -> None:
         self.api_base = os.getenv("TOOLSTORE_API_BASE", "https://api.toolstore.com/dev_api/v1").rstrip("/")
-        self.jwt = os.getenv("TOOLSTORE_JWT", "")
+        self.jwt = jwt if jwt is not None else os.getenv("TOOLSTORE_JWT", "")
         self.dev_slug = os.getenv("TOOLSTORE_DEV_SLUG", "")
         self.tool_slug = os.getenv("TOOLSTORE_TOOL_SLUG", "")
-        self.user_id = os.getenv("TOOLSTORE_USER_ID", "")
-        self.user_slug = os.getenv("TOOLSTORE_USER_SLUG", "")
+        self.user_id = user_id if user_id is not None else os.getenv("TOOLSTORE_USER_ID", "")
+        self.user_slug = user_slug if user_slug is not None else os.getenv("TOOLSTORE_USER_SLUG", "")
         env_endpoint = os.getenv("TOOLSTORE_OAUTH_TOKEN_ENDPOINT", "").strip()
         # Default to the Dev API standard refresh endpoint if not explicitly set
         self.oauth_token_endpoint = env_endpoint or f"{self.api_base}/tool-auth/refresh"
@@ -119,15 +126,37 @@ class ToolStoreClient:
         oauth = user_data.get("oauth", {})
         prov = oauth.get(provider, {})
 
-        def still_valid(exp_value: Any) -> bool:
-            if not exp_value:
-                return True
+        def _parse_expiry_timestamp(exp_value: Any) -> Optional[float]:
+            """Parse expiry values from epoch seconds or ISO datetime strings."""
+            if exp_value in (None, ""):
+                return None
+            # 1) Numeric epoch seconds (int/float or numeric strings)
             try:
-                exp_ts = float(exp_value)
-                # Include a small buffer to avoid edge expiry
-                return time.time() < (exp_ts - 15)
+                return float(exp_value)
             except Exception:
+                pass
+            # 2) ISO datetime (e.g. 2026-04-30T14:27:00Z / +00:00)
+            try:
+                raw = str(exp_value).strip()
+                if raw.endswith("Z"):
+                    raw = raw[:-1] + "+00:00"
+                dt_value = datetime.fromisoformat(raw)
+                if dt_value.tzinfo is None:
+                    dt_value = dt_value.replace(tzinfo=timezone.utc)
+                return dt_value.timestamp()
+            except Exception:
+                return None
+
+        def still_valid(exp_value: Any) -> bool:
+            # If provider does not send expiry, trust token until API says otherwise.
+            if exp_value in (None, ""):
                 return True
+            exp_ts = _parse_expiry_timestamp(exp_value)
+            # Conservative fallback: unknown expiry -> treat as expired, trigger refresh path.
+            if exp_ts is None:
+                return False
+            # Include a small buffer to avoid edge expiry.
+            return time.time() < (exp_ts - 15)
 
         access_token = prov.get("access_token")
         expiry = prov.get("expiry") or prov.get("expires_at")
