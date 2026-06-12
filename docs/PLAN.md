@@ -7,6 +7,7 @@ This file indexes active execution plans for tools in this repository. Each tool
 | Tool | Plan | Status |
 |------|------|--------|
 | Google Contacts | [Google Contacts/PLAN.md](./Google%20Contacts/PLAN.md) | Active |
+| Gmail | [Gmail/PLAN.md](./Gmail/PLAN.md) | Active |
 
 ## Working with Tool Plans
 

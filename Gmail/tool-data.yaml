@@ -1,0 +1,354 @@
+name: "Gmail"
+slug: "gmail"
+short_description: "Manage your Gmail via MCP: read, search, send, reply, forward, drafts, labels, attachments."
+long_description: |
+  An MCP tool that connects to your Google account (via Tool Store activation)
+  to read and search messages, send and reply with proper threading, forward,
+  manage drafts and labels, and download attachments into Tool Store storage.
+  Uses the Gmail API v1.
+version: "1.0.0"
+content_rating: "everyone"
+
+categories:
+  - "productivity"
+  - "email"
+tags:
+  - "google"
+  - "gmail"
+  - "email"
+  - "drafts"
+  - "labels"
+  - "attachments"
+
+actions:
+  - "list messages"
+  - "get message"
+  - "get thread"
+  - "send message"
+  - "reply to message"
+  - "forward message"
+  - "trash message"
+  - "untrash message"
+  - "delete message"
+  - "modify message labels"
+  - "list drafts"
+  - "get draft"
+  - "create draft"
+  - "update draft"
+  - "send draft"
+  - "delete draft"
+  - "list labels"
+  - "create label"
+  - "delete label"
+  - "download attachment"
+  - "get profile"
+
+website: "https://toolstore.com"
+support_email: "support@toolstore.com"
+
+pricing:
+  type: "free"
+
+functions:
+  - name: "list_messages"
+    description: "List or search messages using Gmail query syntax. Returns ids and snippets."
+    parameters:
+      type: "object"
+      properties:
+        q:
+          type: "string"
+          description: "Gmail query (e.g. 'from:foo is:unread')."
+        label_ids:
+          type: "array"
+          items: { type: "string" }
+          description: "Restrict to messages with all listed label ids."
+        max_results:
+          type: "integer"
+          description: "Max results per page (default 50, max 500)."
+        page_token:
+          type: "string"
+          description: "Page token for pagination."
+
+  - name: "get_message"
+    description: "Get a message with headers, plain/HTML body, and attachment metadata."
+    parameters:
+      type: "object"
+      properties:
+        message_id:
+          type: "string"
+          description: "Gmail message id."
+      required: ["message_id"]
+
+  - name: "get_thread"
+    description: "Get a full conversation thread by id."
+    parameters:
+      type: "object"
+      properties:
+        thread_id:
+          type: "string"
+          description: "Gmail thread id."
+      required: ["thread_id"]
+
+  - name: "send_message"
+    description: "Send a new email. Attachments are referenced by Tool Store storage paths."
+    parameters:
+      type: "object"
+      properties:
+        to:
+          type: "string"
+          description: "Comma-separated recipient addresses."
+        cc:
+          type: "string"
+          description: "Comma-separated CC addresses."
+        bcc:
+          type: "string"
+          description: "Comma-separated BCC addresses."
+        subject:
+          type: "string"
+        body_text:
+          type: "string"
+          description: "Plain text body."
+        body_html:
+          type: "string"
+          description: "HTML body (optional). If both set, both are included as multipart/alternative."
+        attachment_storage_paths:
+          type: "array"
+          items: { type: "string" }
+          description: "Tool Store storage file names to attach."
+      required: ["to"]
+
+  - name: "reply_to_message"
+    description: "Reply to a message preserving thread headers (In-Reply-To, References, threadId)."
+    parameters:
+      type: "object"
+      properties:
+        message_id:
+          type: "string"
+          description: "Id of the original message being replied to."
+        body_text:
+          type: "string"
+        body_html:
+          type: "string"
+        attachment_storage_paths:
+          type: "array"
+          items: { type: "string" }
+      required: ["message_id"]
+
+  - name: "forward_message"
+    description: "Forward an existing message to new recipients with an optional additional note."
+    parameters:
+      type: "object"
+      properties:
+        message_id:
+          type: "string"
+        to:
+          type: "string"
+          description: "Comma-separated recipient addresses."
+        additional_text:
+          type: "string"
+        additional_html:
+          type: "string"
+      required: ["message_id", "to"]
+
+  - name: "trash_message"
+    description: "Move a message to Trash."
+    parameters:
+      type: "object"
+      properties:
+        message_id: { type: "string" }
+      required: ["message_id"]
+
+  - name: "untrash_message"
+    description: "Restore a message from Trash."
+    parameters:
+      type: "object"
+      properties:
+        message_id: { type: "string" }
+      required: ["message_id"]
+
+  - name: "delete_message"
+    description: "Permanently delete a message."
+    parameters:
+      type: "object"
+      properties:
+        message_id: { type: "string" }
+      required: ["message_id"]
+
+  - name: "modify_message_labels"
+    description: "Add and/or remove label ids on a message. Use UNREAD/STARRED/INBOX system labels."
+    parameters:
+      type: "object"
+      properties:
+        message_id: { type: "string" }
+        add_label_ids:
+          type: "array"
+          items: { type: "string" }
+        remove_label_ids:
+          type: "array"
+          items: { type: "string" }
+      required: ["message_id"]
+
+  - name: "list_drafts"
+    description: "List drafts with optional query and pagination."
+    parameters:
+      type: "object"
+      properties:
+        q: { type: "string" }
+        max_results: { type: "integer" }
+        page_token: { type: "string" }
+
+  - name: "get_draft"
+    description: "Get a draft by id."
+    parameters:
+      type: "object"
+      properties:
+        draft_id: { type: "string" }
+      required: ["draft_id"]
+
+  - name: "create_draft"
+    description: "Create a new draft. Same parameters as send_message."
+    parameters:
+      type: "object"
+      properties:
+        to: { type: "string" }
+        cc: { type: "string" }
+        bcc: { type: "string" }
+        subject: { type: "string" }
+        body_text: { type: "string" }
+        body_html: { type: "string" }
+        attachment_storage_paths:
+          type: "array"
+          items: { type: "string" }
+
+  - name: "update_draft"
+    description: "Replace the content of a draft."
+    parameters:
+      type: "object"
+      properties:
+        draft_id: { type: "string" }
+        to: { type: "string" }
+        cc: { type: "string" }
+        bcc: { type: "string" }
+        subject: { type: "string" }
+        body_text: { type: "string" }
+        body_html: { type: "string" }
+        attachment_storage_paths:
+          type: "array"
+          items: { type: "string" }
+      required: ["draft_id"]
+
+  - name: "send_draft"
+    description: "Send an existing draft."
+    parameters:
+      type: "object"
+      properties:
+        draft_id: { type: "string" }
+      required: ["draft_id"]
+
+  - name: "delete_draft"
+    description: "Delete a draft."
+    parameters:
+      type: "object"
+      properties:
+        draft_id: { type: "string" }
+      required: ["draft_id"]
+
+  - name: "list_labels"
+    description: "List all labels (system and user)."
+    parameters:
+      type: "object"
+      properties: {}
+
+  - name: "create_label"
+    description: "Create a user label."
+    parameters:
+      type: "object"
+      properties:
+        name: { type: "string" }
+        label_list_visibility:
+          type: "string"
+          description: "labelShow, labelShowIfUnread, or labelHide."
+        message_list_visibility:
+          type: "string"
+          description: "show or hide."
+      required: ["name"]
+
+  - name: "delete_label"
+    description: "Delete a user label."
+    parameters:
+      type: "object"
+      properties:
+        label_id: { type: "string" }
+      required: ["label_id"]
+
+  - name: "download_attachment"
+    description: "Download an attachment and upload it to Tool Store storage. Returns storage info."
+    parameters:
+      type: "object"
+      properties:
+        message_id: { type: "string" }
+        attachment_id: { type: "string" }
+        file_name:
+          type: "string"
+          description: "Target file name in Tool Store storage (defaults to attachment original name)."
+      required: ["message_id", "attachment_id"]
+
+  - name: "get_profile"
+    description: "Get the authenticated user's email address and message/thread totals."
+    parameters:
+      type: "object"
+      properties: {}
+
+activation:
+  steps:
+    - type: "oauth2"
+      title: "Connect your Google account"
+      description: "Authorize access to your Gmail account via the Tool Store."
+      required: true
+      config:
+        provider: "google"
+        scopes:
+          - "https://www.googleapis.com/auth/gmail.modify"
+        redirect_uri: "https://api.toolstore.com/oauth/callback"
+    - type: "form"
+      title: "Account Details"
+      description: "Provide details for the new account."
+      fields:
+        - label: "Account Name"
+          helper_text: "When requesting for this particular account, what would you call this account?"
+          placeholder: "Personal, gmail, work, etc."
+          type: "text"
+          required: true
+        - label: "Priority order"
+          helper_text: "In what order should we prioritize this account when requesting messages?"
+          placeholder: "order"
+          type: "number"
+          required: true
+
+processes:
+  - name: "Add Account"
+    description: "Add a new Google account to the tool."
+    steps:
+      - type: "oauth2"
+        title: "Connect Google Account"
+        description: "Authorize access to your Gmail account."
+        required: true
+        config:
+          provider: "google"
+          scopes:
+            - "https://www.googleapis.com/auth/gmail.modify"
+          redirect_uri: "https://api.toolstore.com/oauth/callback"
+      - type: "form"
+        title: "Account Details"
+        description: "Provide details for the new account."
+        fields:
+          - label: "Account Name"
+            helper_text: "When requesting for this particular account, what would you call this account?"
+            placeholder: "Personal, gmail, work, etc."
+            type: "text"
+            required: true
+          - label: "Priority order"
+            helper_text: "In what order should we prioritize this account when requesting messages?"
+            placeholder: "order"
+            type: "number"
+            required: true

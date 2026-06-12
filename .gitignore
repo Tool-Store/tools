@@ -203,6 +203,11 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+.cursor/
+
+# Local-only Gmail manual one-off test (superseded by Gmail/scripts/)
+Gmail/manual_test.py
+
 # Marimo
 marimo/_static/
 marimo/_lsp/
