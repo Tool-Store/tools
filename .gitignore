@@ -205,7 +205,7 @@ cython_debug/
 
 .cursor/
 
-# Local-only Gmail manual one-off test (superseded by Gmail/scripts/)
+# Local-only Gmail manual one-off test 
 Gmail/manual_test.py
 
 # Marimo
