@@ -63,7 +63,11 @@ def create_server() -> FastMCP:
     """Create the MCP server and register Gmail tools."""
     load_dotenv()
     _setup_logging()
-    server = FastMCP("gmail")
+    server = FastMCP(
+        "gmail",
+        host=os.getenv("MCP_HOST", "127.0.0.1"),
+        port=int(os.getenv("MCP_PORT", "8000")),
+    )
 
     ts = ToolStoreClient()
 
@@ -308,7 +312,8 @@ def create_server() -> FastMCP:
 
 def main() -> None:
     server = create_server()
-    server.run()
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    server.run(transport=transport)
 
 
 if __name__ == "__main__":
