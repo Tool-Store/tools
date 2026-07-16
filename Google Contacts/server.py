@@ -11,8 +11,7 @@ from toolstore_client import ToolStoreClient
 from google_contacts import GooglePeopleClient
 
 # MCP server library (Model Context Protocol)
-from mcp.server import Server
-from mcp.server.stdio import run
+from mcp.server.fastmcp import FastMCP
 from mcp.types import TextContent
 
 
@@ -106,11 +105,15 @@ def _download_text_from_url(url: str) -> str:
         return resp.content.decode('latin-1')
 
 
-def create_server() -> Server:
+def create_server() -> FastMCP:
     """Create the MCP server and register tools for Google Contacts management."""
     load_dotenv()
     _setup_logging()
-    server = Server("google-contacts")
+    server = FastMCP(
+        "google-contacts",
+        host=os.getenv("MCP_HOST", "127.0.0.1"),
+        port=int(os.getenv("MCP_PORT", "8080")),
+    )
 
     ts = ToolStoreClient()
 
@@ -317,7 +320,8 @@ def create_server() -> Server:
 
 def main() -> None:
     server = create_server()
-    run(server)
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    server.run(transport=transport)
 
 
 if __name__ == "__main__":

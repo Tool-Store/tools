@@ -5,6 +5,29 @@ from typing import Any, Dict, Optional, Tuple
 import requests
 
 
+def _request_header(name: str) -> str:
+    """Read an HTTP header from the active MCP streamable-http request, if any."""
+    try:
+        from mcp.server.lowlevel.server import request_ctx
+
+        ctx = request_ctx.get(None)
+        if ctx is None or ctx.request is None:
+            return ""
+        return str(ctx.request.headers.get(name) or "").strip()
+    except Exception:
+        return ""
+
+
+def _resolve_jwt() -> str:
+    jwt = _request_header("X-Toolstore-JWT")
+    if jwt:
+        return jwt
+    auth = _request_header("Authorization")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return os.getenv("TOOLSTORE_JWT", "")
+
+
 class ToolStoreClient:
     """Client for interacting with the Tool Store Developer API.
 
@@ -22,14 +45,33 @@ class ToolStoreClient:
 
     def __init__(self) -> None:
         self.api_base = os.getenv("TOOLSTORE_API_BASE", "https://api.toolstore.com/dev_api/v1").rstrip("/")
-        self.jwt = os.getenv("TOOLSTORE_JWT", "")
-        self.dev_slug = os.getenv("TOOLSTORE_DEV_SLUG", "")
-        self.tool_slug = os.getenv("TOOLSTORE_TOOL_SLUG", "")
-        self.user_id = os.getenv("TOOLSTORE_USER_ID", "")
-        self.user_slug = os.getenv("TOOLSTORE_USER_SLUG", "")
+        self._env_dev_slug = os.getenv("TOOLSTORE_DEV_SLUG", "")
+        self._env_tool_slug = os.getenv("TOOLSTORE_TOOL_SLUG", "")
+        self._env_user_id = os.getenv("TOOLSTORE_USER_ID", "")
+        self._env_user_slug = os.getenv("TOOLSTORE_USER_SLUG", "")
         env_endpoint = os.getenv("TOOLSTORE_OAUTH_TOKEN_ENDPOINT", "").strip()
         # Default to the Dev API standard refresh endpoint if not explicitly set
         self.oauth_token_endpoint = env_endpoint or f"{self.api_base}/tool-auth/refresh"
+
+    @property
+    def jwt(self) -> str:
+        return _resolve_jwt()
+
+    @property
+    def dev_slug(self) -> str:
+        return self._env_dev_slug
+
+    @property
+    def tool_slug(self) -> str:
+        return self._env_tool_slug
+
+    @property
+    def user_id(self) -> str:
+        return _request_header("X-Toolstore-User-Id") or self._env_user_id
+
+    @property
+    def user_slug(self) -> str:
+        return _request_header("X-Toolstore-User-Slug") or self._env_user_slug
 
     # ------------------------
     # Internal helpers
@@ -39,7 +81,11 @@ class ToolStoreClient:
             raise RuntimeError(
                 "Missing TOOLSTORE_JWT. Please run activation and ensure the Tool Store host injects user auth."
             )
-        return {"Authorization": f"Bearer {self.jwt}", "Content-Type": "application/json"}
+        headers = {"Authorization": f"Bearer {self.jwt}", "Content-Type": "application/json"}
+        internal_token = _request_header("X-Internal-Token")
+        if internal_token:
+            headers["X-Internal-Token"] = internal_token
+        return headers
 
     def _require_identities(self) -> None:
         missing = [
