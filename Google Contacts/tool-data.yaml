@@ -17,17 +17,6 @@ tags:
   - "people-api"
   - "export"
 
-actions:
-  - "create contact"
-  - "search contacts"
-  - "get contact details"
-  - "update contact"
-  - "delete contact"
-  - "get todays birthdays"
-  - "export contacts"
-  - "export contacts vcf"
-  - "import contacts vcf"
-
 website: "https://toolstore.com"
 support_email: "support@toolstore.com"
 
@@ -37,6 +26,8 @@ pricing:
 functions:
   - name: "create_contact"
     description: "Create a new contact with optional fields and photo."
+    actions:
+      - "create contact"
     parameters:
       type: "object"
       properties:
@@ -58,6 +49,8 @@ functions:
           type: "string"
   - name: "search_contacts"
     description: "Search contacts by text query over names, emails, phones. Returns a concise listing."
+    actions:
+      - "search contacts"
     parameters:
       type: "object"
       properties:
@@ -74,6 +67,8 @@ functions:
 
   - name: "get_contact_details"
     description: "Get full details for a contact by resource name (e.g., people/c123)."
+    actions:
+      - "get contact details"
     parameters:
       type: "object"
       properties:
@@ -84,6 +79,8 @@ functions:
 
   - name: "update_contact"
     description: "Update a contact’s fields by resource name. Merges provided fields."
+    actions:
+      - "update contact"
     parameters:
       type: "object"
       properties:
@@ -110,6 +107,8 @@ functions:
 
   - name: "delete_contact"
     description: "Delete a contact by resource name."
+    actions:
+      - "delete contact"
     parameters:
       type: "object"
       properties:
@@ -120,12 +119,16 @@ functions:
 
   - name: "get_todays_birthdays"
     description: "Return contacts whose birthdays match today’s month and day."
+    actions:
+      - "get todays birthdays"
     parameters:
       type: "object"
       properties: {}
 
   - name: "export_contacts"
     description: "Export all contacts to CSV and upload to Tool Store storage. Returns storage path and download information."
+    actions:
+      - "export contacts"
     parameters:
       type: "object"
       properties:
@@ -135,6 +138,8 @@ functions:
 
   - name: "export_contacts_vcf"
     description: "Export all contacts to a VCF file and upload to Tool Store storage."
+    actions:
+      - "export contacts vcf"
     parameters:
       type: "object"
       properties:
@@ -144,6 +149,8 @@ functions:
 
   - name: "import_contacts_vcf"
     description: "Import contacts from a VCF file. Provide either file_url or storage_file_name."
+    actions:
+      - "import contacts vcf"
     parameters:
       type: "object"
       properties:

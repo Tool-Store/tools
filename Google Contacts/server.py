@@ -11,8 +11,8 @@ from toolstore_client import ToolStoreClient
 from google_contacts import GooglePeopleClient
 
 # MCP server library (Model Context Protocol)
-from mcp.server import Server
-from mcp.server.stdio import run
+from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import Context
 from mcp.types import TextContent
 
 
@@ -106,13 +106,38 @@ def _download_text_from_url(url: str) -> str:
         return resp.content.decode('latin-1')
 
 
-def create_server() -> Server:
+def create_server() -> FastMCP:
     """Create the MCP server and register tools for Google Contacts management."""
     load_dotenv()
     _setup_logging()
-    server = Server("google-contacts")
+    mcp_host = os.getenv("MCP_HOST", "0.0.0.0")
+    mcp_port = int(os.getenv("MCP_PORT", "8080"))
+    server = FastMCP("google-contacts", host=mcp_host, port=mcp_port)
 
     ts = ToolStoreClient()
+
+    def _toolstore_client_for_request(ctx: Optional[Context] = None) -> ToolStoreClient:
+        """Build ToolStore client with per-request auth context when available."""
+        if not ctx:
+            return ts
+        try:
+            req = getattr(ctx.request_context, "request", None)
+            headers = getattr(req, "headers", {}) if req is not None else {}
+            jwt = (
+                headers.get("x-toolstore-jwt")
+                or (
+                    (headers.get("authorization") or "").split(" ", 1)[1]
+                    if (headers.get("authorization") or "").lower().startswith("bearer ")
+                    else None
+                )
+            )
+            user_id = headers.get("x-toolstore-user-id")
+            user_slug = headers.get("x-toolstore-user-slug")
+            if jwt or user_id or user_slug:
+                return ToolStoreClient(jwt=jwt, user_id=user_id, user_slug=user_slug)
+        except Exception:
+            pass
+        return ts
 
     @server.tool()
     def create_contact(
@@ -123,9 +148,11 @@ def create_server() -> Server:
         birthday: Optional[str] = None,
         photo_url: Optional[str] = None,
         note: Optional[str] = None,
+        ctx: Optional[Context] = None,
     ) -> List[TextContent]:
         """Create a new contact with optional fields and photo."""
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         created = client.create_contact(
             given_name=given_name,
             family_name=family_name,
@@ -138,19 +165,26 @@ def create_server() -> Server:
         return [TextContent(type="text", text=str(created))]
 
     @server.tool()
-    def search_contacts(query: str, page_size: int = 50, page_token: Optional[str] = None) -> List[TextContent]:
+    def search_contacts(
+        query: str,
+        page_size: int = 50,
+        page_token: Optional[str] = None,
+        ctx: Optional[Context] = None,
+    ) -> List[TextContent]:
         """Search contacts by text query over names, emails, and phones.
 
         Returns a JSON listing of matches as text content.
         """
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         data = client.search_contacts(query=query, page_size=page_size, page_token=page_token)
         return [TextContent(type="text", text=str(data))]
 
     @server.tool()
-    def get_contact_details(resource_name: str) -> List[TextContent]:
+    def get_contact_details(resource_name: str, ctx: Optional[Context] = None) -> List[TextContent]:
         """Get full details for the specified contact resource name."""
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         data = client.get_contact(resource_name)
         return [TextContent(type="text", text=str(data))]
 
@@ -164,9 +198,11 @@ def create_server() -> Server:
         birthday: Optional[str] = None,
         photo_url: Optional[str] = None,
         note: Optional[str] = None,
+        ctx: Optional[Context] = None,
     ) -> List[TextContent]:
         """Update selected fields for a contact. Fields not provided are left unchanged."""
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         updated = client.update_contact(
             resource_name=resource_name,
             given_name=given_name,
@@ -180,16 +216,18 @@ def create_server() -> Server:
         return [TextContent(type="text", text=str(updated))]
 
     @server.tool()
-    def delete_contact(resource_name: str) -> List[TextContent]:
+    def delete_contact(resource_name: str, ctx: Optional[Context] = None) -> List[TextContent]:
         """Delete a contact by resource name."""
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         client.delete_contact(resource_name)
         return [TextContent(type="text", text="Deleted")]        
 
     @server.tool()
-    def get_todays_birthdays() -> List[TextContent]:
+    def get_todays_birthdays(ctx: Optional[Context] = None) -> List[TextContent]:
         """Return contacts whose birthdays are today (month/day)."""
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         today = (dt.datetime.utcnow()).date()
         month = today.month
         day = today.day
@@ -206,7 +244,7 @@ def create_server() -> Server:
         return [TextContent(type="text", text=str({"count": len(matches), "people": matches}))]
 
     @server.tool()
-    def export_contacts(file_name: Optional[str] = None) -> List[TextContent]:
+    def export_contacts(file_name: Optional[str] = None, ctx: Optional[Context] = None) -> List[TextContent]:
         """Export all contacts to CSV and upload to Tool Store storage.
 
         Args:
@@ -215,21 +253,23 @@ def create_server() -> Server:
         Returns:
             JSON payload containing storage metadata.
         """
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         people: List[Dict[str, Any]] = list(client.list_all_connections())
         csv_bytes = _csv_bytes_from_people(people)
         fname = file_name or "contacts-export.csv"
-        info = ts.upload_file(file_name=fname, content=csv_bytes, content_type="text/csv")
+        info = ts_client.upload_file(file_name=fname, content=csv_bytes, content_type="text/csv")
         return [TextContent(type="text", text=str(info))]
 
     @server.tool()
-    def export_contacts_vcf(file_name: Optional[str] = None) -> List[TextContent]:
+    def export_contacts_vcf(file_name: Optional[str] = None, ctx: Optional[Context] = None) -> List[TextContent]:
         """Export all contacts to a VCF file and upload to Tool Store storage."""
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         people: List[Dict[str, Any]] = list(client.list_all_connections())
         vcf_bytes = _vcf_bytes_from_people(people)
         fname = file_name or "contacts-export.vcf"
-        info = ts.upload_file(file_name=fname, content=vcf_bytes, content_type="text/vcard")
+        info = ts_client.upload_file(file_name=fname, content=vcf_bytes, content_type="text/vcard")
         return [TextContent(type="text", text=str(info))]
 
     @server.tool()
@@ -237,6 +277,7 @@ def create_server() -> Server:
         file_url: Optional[str] = None,
         storage_file_name: Optional[str] = None,
         limit: Optional[int] = None,
+        ctx: Optional[Context] = None,
     ) -> List[TextContent]:
         """Import contacts from a VCF file. Provide either a public file_url or a storage_file_name.
 
@@ -245,11 +286,12 @@ def create_server() -> Server:
             storage_file_name: Path in Tool Store storage for the current user; the server will resolve a download URL.
             limit: Optional maximum number of vCards to import (useful for testing).
         """
-        client = _people_client(ts)
+        ts_client = _toolstore_client_for_request(ctx)
+        client = _people_client(ts_client)
         if bool(file_url) == bool(storage_file_name):
             raise RuntimeError("Provide exactly one of file_url or storage_file_name")
         if storage_file_name:
-            resolved = ts.get_download_url(storage_file_name)
+            resolved = ts_client.get_download_url(storage_file_name)
             if not resolved:
                 raise RuntimeError("Could not resolve download URL for storage_file_name")
             file_url = resolved
@@ -317,7 +359,10 @@ def create_server() -> Server:
 
 def main() -> None:
     server = create_server()
-    run(server)
+    transport = os.getenv("MCP_TRANSPORT", "stdio").strip().lower()
+    if transport not in {"stdio", "sse", "streamable-http"}:
+        transport = "stdio"
+    server.run(transport)
 
 
 if __name__ == "__main__":
