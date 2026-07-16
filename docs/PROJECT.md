@@ -7,6 +7,7 @@ This file indexes the Vibe Code tool definitions in this repository. The actual 
 | Tool | PROJECT.md | ARCHITECTURE_INDEX.md | PLAN.md |
 |------|------------|----------------------|---------|
 | Google Contacts | [Google Contacts/PROJECT.md](./Google%20Contacts/PROJECT.md) | [Google Contacts/ARCHITECTURE_INDEX.md](./Google%20Contacts/ARCHITECTURE_INDEX.md) | [Google Contacts/PLAN.md](./Google%20Contacts/PLAN.md) |
+| Gmail | [Gmail/PROJECT.md](./Gmail/PROJECT.md) | [Gmail/ARCHITECTURE_INDEX.md](./Gmail/ARCHITECTURE_INDEX.md) | [Gmail/PLAN.md](./Gmail/PLAN.md) |
 
 ## Repository Purpose
 
