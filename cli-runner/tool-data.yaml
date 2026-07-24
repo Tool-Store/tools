@@ -1,0 +1,110 @@
+name: "CLI Runner"
+slug: "cli-runner"
+short_description: "Shared runtime that installs skill CLIs once and runs mapped commands."
+long_description: |
+  One shared MCP tool used by many CLI-based skills. On first skill setup it runs
+  install steps inside this container and records install state. Later, skill
+  actions call run_cli with an argv list (no shell) to execute mapped commands.
+version: "1.0.1"
+content_rating: "everyone"
+
+categories:
+  - "developer-tools"
+  - "automation"
+tags:
+  - "cli"
+  - "runtime"
+  - "skills"
+  - "shell"
+
+actions:
+  - "check install status"
+  - "check binary"
+  - "install skill cli"
+  - "run cli command"
+
+website: "https://toolstore.com"
+support_email: "support@toolstore.com"
+
+pricing:
+  type: "free"
+
+functions:
+  - name: "get_skill_install_status"
+    description: "Return whether a skill's CLI runtime was already installed in this container."
+    actions:
+      - "check install status"
+    parameters:
+      type: "object"
+      properties:
+        skill_slug:
+          type: "string"
+          description: "Skill slug in kebab-case (e.g. agent-browser)."
+      required: ["skill_slug"]
+
+  - name: "check_cli_binary"
+    description: "Check whether a binary is available on PATH."
+    actions:
+      - "check binary"
+    parameters:
+      type: "object"
+      properties:
+        binary:
+          type: "string"
+          description: "Bare binary name, e.g. agent-browser or op."
+      required: ["binary"]
+
+  - name: "install_skill_cli"
+    description: "Install a skill's CLI deps once. Skips if already installed unless force=true."
+    actions:
+      - "install skill cli"
+    parameters:
+      type: "object"
+      properties:
+        skill_slug:
+          type: "string"
+          description: "Skill slug in kebab-case."
+        bins:
+          type: "array"
+          items: { type: "string" }
+          description: "Binaries that must exist on PATH after install."
+        install_steps:
+          type: "array"
+          items: { type: "string" }
+          description: "One-line install commands, e.g. npm install -g agent-browser."
+        timeout_seconds:
+          type: "integer"
+          description: "Per-step timeout (default 300, max 600)."
+        force:
+          type: "boolean"
+          description: "Re-run install even if previously marked installed."
+      required: ["skill_slug"]
+
+  - name: "run_cli"
+    description: "Run a CLI command as an argv list (no shell)."
+    actions:
+      - "run cli command"
+    parameters:
+      type: "object"
+      properties:
+        argv:
+          type: "array"
+          items: { type: "string" }
+          description: "Argv list, e.g. [agent-browser, open, https://example.com]."
+        timeout_seconds:
+          type: "integer"
+          description: "Command timeout (default 120, max 600)."
+      required: ["argv"]
+
+activation:
+  type: "instant"
+  steps: []
+
+# ToolMetadata.requirements must be a list of strings (not a dict).
+requirements:
+  - "Python >=3.11"
+  - "nodejs and npm available in the runtime image"
+
+dependencies:
+  - "mcp"
+  - "python-dotenv"
