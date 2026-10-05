@@ -8,6 +8,7 @@ This file indexes tool-level architecture documentation. Each tool's architectur
 |------|-------------------|------------|
 | Google Contacts | [Google Contacts/ARCHITECTURE_INDEX.md](./Google%20Contacts/ARCHITECTURE_INDEX.md) | Python, MCP SDK, Google People API |
 | Gmail | [Gmail/ARCHITECTURE_INDEX.md](./Gmail/ARCHITECTURE_INDEX.md) | Python, MCP SDK, Gmail API v1 |
+| Social Media Scraper | [Social Media Scraper/ARCHITECTURE_INDEX.md](./Social%20Media%20Scraper/ARCHITECTURE_INDEX.md) | Python, MCP SDK, Jina Reader, yt-dlp |
 
 ## Repository Structure
 

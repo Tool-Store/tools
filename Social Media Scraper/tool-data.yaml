@@ -1,0 +1,78 @@
+name: "Social Media Scraper"
+slug: "social-media-scraper"
+short_description: "Read public web content via MCP: web pages, LinkedIn company pages and jobs, YouTube transcripts."
+long_description: |
+  An MCP tool that lets AI agents read public content without logging in.
+  Read any public web page as clean markdown (news, shopping, entertainment,
+  jobs, docs, LinkedIn company pages and job listings) via Jina Reader, and
+  fetch YouTube video transcripts from subtitles or auto-captions. Pages that
+  require a login (Instagram, Facebook, LinkedIn personal profiles) are not
+  supported. An optional Jina API key raises the web-reading rate limit.
+version: "1.0.3"
+content_rating: "everyone"
+
+categories:
+  - "research"
+  - "social media"
+tags:
+  - "scraper"
+  - "web"
+  - "youtube"
+  - "transcripts"
+  - "jina"
+
+website: "https://toolstore.com"
+support_email: "support@toolstore.com"
+
+pricing:
+  type: "free"
+
+functions:
+  - name: "scrape_url"
+    description: "Read any public web page and return its content as clean markdown."
+    actions:
+      - "scrape url"
+    parameters:
+      type: "object"
+      properties:
+        url:
+          type: "string"
+          description: "Absolute http(s) URL of the page to read."
+        max_chars:
+          type: "integer"
+          description: "Maximum characters to return (default 20000, max 100000)."
+      required: ["url"]
+
+  - name: "get_youtube_transcript"
+    description: "Get the transcript of a public YouTube video from its subtitles or auto-captions."
+    actions:
+      - "get youtube transcript"
+    parameters:
+      type: "object"
+      properties:
+        url:
+          type: "string"
+          description: "youtube.com or youtu.be video URL."
+        language:
+          type: "string"
+          description: "Subtitle language code (default 'en')."
+        max_chars:
+          type: "integer"
+          description: "Maximum characters to return (default 20000, max 100000)."
+      required: ["url"]
+
+activation:
+  steps:
+    - type: "form"
+      title: "Optional API keys"
+      description: "All tools work without keys. Add a Jina API key for higher web-reading rate limits."
+      required: false
+      help_url: "https://jina.ai/reader"
+      fields:
+        - name: "JINA_API_KEY"
+          label: "Jina API Key"
+          type: "password"
+          required: false
+          secret: true
+          placeholder: "jina_..."
+          description: "Optional. Get a key at jina.ai/reader."

@@ -8,6 +8,7 @@ This file indexes the Vibe Code tool definitions in this repository. The actual 
 |------|------------|----------------------|---------|
 | Google Contacts | [Google Contacts/PROJECT.md](./Google%20Contacts/PROJECT.md) | [Google Contacts/ARCHITECTURE_INDEX.md](./Google%20Contacts/ARCHITECTURE_INDEX.md) | [Google Contacts/PLAN.md](./Google%20Contacts/PLAN.md) |
 | Gmail | [Gmail/PROJECT.md](./Gmail/PROJECT.md) | [Gmail/ARCHITECTURE_INDEX.md](./Gmail/ARCHITECTURE_INDEX.md) | [Gmail/PLAN.md](./Gmail/PLAN.md) |
+| Social Media Scraper | [Social Media Scraper/PROJECT.md](./Social%20Media%20Scraper/PROJECT.md) | [Social Media Scraper/ARCHITECTURE_INDEX.md](./Social%20Media%20Scraper/ARCHITECTURE_INDEX.md) | [Social Media Scraper/PLAN.md](./Social%20Media%20Scraper/PLAN.md) |
 
 ## Repository Purpose
 

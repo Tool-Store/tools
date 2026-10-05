@@ -8,6 +8,7 @@ This file indexes active execution plans for tools in this repository. Each tool
 |------|------|--------|
 | Google Contacts | [Google Contacts/PLAN.md](./Google%20Contacts/PLAN.md) | Active |
 | Gmail | [Gmail/PLAN.md](./Gmail/PLAN.md) | Active |
+| Social Media Scraper | [Social Media Scraper/PLAN.md](./Social%20Media%20Scraper/PLAN.md) | Active |
 
 ## Working with Tool Plans
 
