@@ -1,14 +1,14 @@
 name: "Social Media Scraper"
 slug: "social-media-scraper"
-short_description: "Read public web content via MCP: web pages, LinkedIn company pages and jobs, YouTube transcripts."
+short_description: "Read public social and web content via MCP: Instagram, Facebook, LinkedIn, X, Telegram, YouTube and web pages."
 long_description: |
   An MCP tool that lets AI agents read public content without logging in.
-  Read any public web page as clean markdown (news, shopping, entertainment,
-  jobs, docs, LinkedIn company pages and job listings) via Jina Reader, and
-  fetch YouTube video transcripts from subtitles or auto-captions. Pages that
-  require a login (Instagram, Facebook, LinkedIn personal profiles) are not
-  supported. An optional Jina API key raises the web-reading rate limit.
-version: "1.0.3"
+  Get public profiles and recent posts from Instagram, Facebook pages,
+  LinkedIn and X, read public Telegram channels, read any public web page
+  as clean markdown via Jina Reader, and fetch YouTube video transcripts
+  from subtitles or auto-captions. Private profiles are not supported.
+  An optional Jina API key raises the web-reading rate limit.
+version: "1.0.4"
 content_rating: "everyone"
 
 categories:
@@ -20,6 +20,11 @@ tags:
   - "youtube"
   - "transcripts"
   - "jina"
+  - "instagram"
+  - "facebook"
+  - "linkedin"
+  - "x"
+  - "telegram"
 
 website: "https://toolstore.com"
 support_email: "support@toolstore.com"
@@ -60,6 +65,62 @@ functions:
           type: "integer"
           description: "Maximum characters to return (default 20000, max 100000)."
       required: ["url"]
+
+  - name: "get_telegram_channel_posts"
+    description: "Read recent posts from a public Telegram channel."
+    actions:
+      - "get telegram channel posts"
+    parameters:
+      type: "object"
+      properties:
+        channel:
+          type: "string"
+          description: "Public channel username, e.g. 'durov' or '@durov'."
+        max_chars:
+          type: "integer"
+          description: "Maximum characters to return (default 20000, max 100000)."
+      required: ["channel"]
+
+  - name: "get_social_profile"
+    description: "Get a public profile from Instagram, Facebook (public pages), LinkedIn or X."
+    actions:
+      - "get social profile"
+    parameters:
+      type: "object"
+      properties:
+        platform:
+          type: "string"
+          enum: ["instagram", "facebook", "linkedin", "x"]
+          description: "Social platform to read from."
+        handle:
+          type: "string"
+          description: "Profile username without URL, e.g. 'natgeo' (Instagram/X), page name (Facebook), or public profile ID (LinkedIn)."
+        max_chars:
+          type: "integer"
+          description: "Maximum characters to return (default 20000, max 100000)."
+      required: ["platform", "handle"]
+
+  - name: "get_social_posts"
+    description: "Get recent public posts from an Instagram, Facebook page, LinkedIn or X profile."
+    actions:
+      - "get social posts"
+    parameters:
+      type: "object"
+      properties:
+        platform:
+          type: "string"
+          enum: ["instagram", "facebook", "linkedin", "x"]
+          description: "Social platform to read from."
+        handle:
+          type: "string"
+          description: "Profile username without URL, e.g. 'natgeo' (Instagram/X), page name (Facebook), or public profile ID (LinkedIn)."
+        limit:
+          type: "integer"
+          description: "Number of recent posts to return (default 10, max 50)."
+        max_chars:
+          type: "integer"
+          description: "Maximum characters to return (default 20000, max 100000)."
+      required: ["platform", "handle"]
 
 activation:
   steps:

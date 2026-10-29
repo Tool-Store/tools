@@ -9,10 +9,14 @@ import yt_dlp
 logger = logging.getLogger(__name__)
 
 JINA_READER_BASE = "https://r.jina.ai/"
+TELEGRAM_PREVIEW_BASE = "https://t.me/s/"
 REQUEST_TIMEOUT_SECONDS = 30
 DEFAULT_MAX_CHARS = 20_000
 MAX_CHARS_LIMIT = 100_000
 _YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
+_TELEGRAM_CHANNEL = re.compile(r"^[A-Za-z][A-Za-z0-9_]{4,31}$")
+# Telegram serves this "Contact @name" page instead of a preview for missing, private or non-channel usernames.
+_TELEGRAM_NO_PREVIEW_TITLE = "Title: Telegram: Contact @"
 _VTT_TAG = re.compile(r"<[^>]+>")
 _VTT_METADATA_PREFIXES = ("WEBVTT", "Kind:", "Language:", "NOTE")
 
@@ -32,19 +36,26 @@ def _validate_youtube_url(url: str) -> str:
     return target_url
 
 
-def _validate_max_chars(max_chars: int) -> int:
+def validate_max_chars(max_chars: int) -> int:
     if not 1 <= max_chars <= MAX_CHARS_LIMIT:
         raise ValueError(f"max_chars must be between 1 and {MAX_CHARS_LIMIT}, got {max_chars}")
     return max_chars
 
 
-def _truncated_result(source_url: str, content: str, max_chars: int) -> Dict[str, Any]:
+def truncated_result(source_url: str, content: str, max_chars: int) -> Dict[str, Any]:
     return {
         "url": source_url,
         "content": content[:max_chars],
         "truncated": len(content) > max_chars,
         "total_chars": len(content),
     }
+
+
+def unreachable_error(service: str, exc: requests.RequestException, timeout_seconds: int) -> RuntimeError:
+    """Turn a low-level requests failure into an actionable error without connection-pool internals."""
+    reason = f"timed out after {timeout_seconds}s" if isinstance(exc, requests.Timeout) else "network connection failed"
+    logger.error("%s request failed: reason=%s detail=%s", service, reason, exc)
+    return RuntimeError(f"Could not reach {service}: {reason}. Retry in a moment.")
 
 
 def scrape_url(
@@ -54,12 +65,15 @@ def scrape_url(
 ) -> Dict[str, Any]:
     """Fetch a public web page through Jina Reader and return it as markdown."""
     target_url = _validate_http_url(url)
-    limit = _validate_max_chars(max_chars)
+    limit = validate_max_chars(max_chars)
     headers = {"X-Return-Format": "markdown"}
     if jina_api_key:
         headers["Authorization"] = f"Bearer {jina_api_key}"
 
-    resp = requests.get(f"{JINA_READER_BASE}{target_url}", headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+    try:
+        resp = requests.get(f"{JINA_READER_BASE}{target_url}", headers=headers, timeout=REQUEST_TIMEOUT_SECONDS)
+    except requests.RequestException as exc:
+        raise unreachable_error("Jina Reader", exc, REQUEST_TIMEOUT_SECONDS) from exc
     if resp.status_code == 429:
         logger.warning("Jina Reader rate limited: url=%s has_api_key=%s", target_url, bool(jina_api_key))
         raise RuntimeError(
@@ -68,7 +82,29 @@ def scrape_url(
     if not resp.ok:
         logger.error("Jina Reader request failed: status=%s url=%s", resp.status_code, target_url)
         raise RuntimeError(f"Jina Reader could not read '{target_url}': {resp.status_code} {resp.text[:300]}")
-    return _truncated_result(target_url, resp.text, limit)
+    return truncated_result(target_url, resp.text, limit)
+
+
+def get_telegram_channel_posts(
+    channel: str,
+    max_chars: int = DEFAULT_MAX_CHARS,
+    jina_api_key: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Read recent posts of a public Telegram channel from its t.me/s web preview (no Telegram login)."""
+    channel_name = (channel or "").strip().lstrip("@")
+    if not _TELEGRAM_CHANNEL.match(channel_name):
+        raise ValueError(
+            f"Invalid Telegram channel '{channel}': expected a public channel username such as 'durov' "
+            "(5-32 letters, digits or underscores, starting with a letter)."
+        )
+    result = scrape_url(f"{TELEGRAM_PREVIEW_BASE}{channel_name}", max_chars=max_chars, jina_api_key=jina_api_key)
+    if result["content"].startswith(_TELEGRAM_NO_PREVIEW_TITLE):
+        raise RuntimeError(
+            f"No public Telegram channel '{channel_name}'. It may not exist, may be private, "
+            "or may be a user or bot rather than a channel."
+        )
+    result["channel"] = channel_name
+    return result
 
 
 def _fetch_video_and_subtitles(video_url: str, language: str) -> Tuple[Dict[str, Any], str]:
@@ -129,12 +165,12 @@ def _vtt_to_text(vtt: str) -> str:
 def get_youtube_transcript(url: str, language: str = "en", max_chars: int = DEFAULT_MAX_CHARS) -> Dict[str, Any]:
     """Return a YouTube video's transcript from its subtitles or auto-captions, without downloading video."""
     video_url = _validate_youtube_url(url)
-    limit = _validate_max_chars(max_chars)
+    limit = validate_max_chars(max_chars)
     language_code = (language or "").strip()
     if not language_code:
         raise ValueError("language is required, e.g. 'en'")
 
     video_info, vtt = _fetch_video_and_subtitles(video_url, language_code)
-    result = _truncated_result(video_url, _vtt_to_text(vtt), limit)
+    result = truncated_result(video_url, _vtt_to_text(vtt), limit)
     result.update({"title": video_info.get("title"), "language": language_code})
     return result

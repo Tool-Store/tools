@@ -13,7 +13,7 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends \
 # yt-dlp needs a JavaScript runtime to solve YouTube player challenges
 COPY --from=denoland/deno:bin /deno /usr/local/bin/deno
 
-COPY server.py scraper.py toolstore_client.py ./
+COPY server.py scraper.py social_platforms.py toolstore_client.py ./
 
 RUN pip install --no-cache-dir \
     "mcp<2" \
