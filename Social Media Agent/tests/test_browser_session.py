@@ -1,0 +1,190 @@
+import asyncio
+import re
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import pytest
+import pytest_asyncio
+from cryptography.fernet import Fernet
+
+import browser_session
+import login_store
+from constants import LOGIN_ENCRYPTION_KEY_ENV, LOGIN_STORE_DIR_ENV
+from errors import NotLoggedInError
+
+PAGE = b"""<html><body><p id="cookies"></p><div id="feed" style="height:3000px"></div>
+<main><ul id="entries"><li>First entry</li></ul>
+<button id="more" onclick="this.previousElementSibling.insertAdjacentHTML('beforeend', '<li>Extra entry</li>')">Show more</button>
+<button style="display:none">Show all</button></main>
+<script>
+setTimeout(() => document.body.insertAdjacentHTML('beforeend', '<p id="late">late</p>'), 300);
+document.getElementById('cookies').textContent = document.cookie;
+document.cookie = 'rotated=fresh; path=/';
+window.addEventListener('scroll', () => {
+  const more = document.createElement('div');
+  more.style.height = '2000px';
+  more.className = 'loaded';
+  document.getElementById('feed').appendChild(more);
+}, { once: true });
+</script></body></html>"""
+
+
+class _PageHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.end_headers()
+        self.wfile.write(PAGE)
+
+    def log_message(self, *args):
+        pass
+
+
+@pytest.fixture(scope="module")
+def site_url():
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _PageHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}/"
+    server.shutdown()
+
+
+@pytest.fixture
+def store(tmp_path, monkeypatch):
+    monkeypatch.setenv(LOGIN_STORE_DIR_ENV, str(tmp_path))
+    monkeypatch.setenv(LOGIN_ENCRYPTION_KEY_ENV, Fernet.generate_key().decode())
+
+
+@pytest_asyncio.fixture
+async def browser():
+    yield
+    await browser_session.shutdown()
+
+
+def _login(user_id, value):
+    login_store.save_cookies(user_id, "site", [{"name": "session", "value": value, "domain": "127.0.0.1", "path": "/"}])
+
+
+@pytest.mark.asyncio
+async def test_page_opens_with_the_users_saved_login(store, browser, site_url):
+    _login("user-1", "user-1-session")
+
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url)
+        shown = await page.evaluate("document.getElementById('cookies').textContent")
+
+    assert "session=user-1-session" in shown
+
+
+@pytest.mark.asyncio
+async def test_parallel_users_never_see_each_others_login(store, browser, site_url):
+    _login("user-1", "user-1-session")
+    _login("user-2", "user-2-session")
+
+    async def read_cookies(user_id):
+        async with browser_session.user_page(user_id, "site") as page:
+            await page.goto(site_url)
+            return await page.evaluate("document.getElementById('cookies').textContent")
+
+    first, second = await asyncio.gather(read_cookies("user-1"), read_cookies("user-2"))
+
+    assert "user-1-session" in first and "user-2-session" not in first
+    assert "user-2-session" in second and "user-1-session" not in second
+
+
+@pytest.mark.asyncio
+async def test_cookies_the_site_rotates_are_saved_after_a_successful_request(store, browser, site_url):
+    _login("user-1", "user-1-session")
+
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url)
+
+    saved = {cookie["name"]: cookie["value"] for cookie in login_store.load_cookies("user-1", "site")}
+    assert saved == {"session": "user-1-session", "rotated": "fresh"}
+
+
+@pytest.mark.asyncio
+async def test_cookies_are_not_saved_when_the_request_fails(store, browser, site_url):
+    _login("user-1", "user-1-session")
+
+    with pytest.raises(RuntimeError, match="extraction failed"):
+        async with browser_session.user_page("user-1", "site") as page:
+            await page.goto(site_url)
+            raise RuntimeError("extraction failed")
+
+    assert [cookie["name"] for cookie in login_store.load_cookies("user-1", "site")] == ["session"]
+
+
+@pytest.mark.asyncio
+async def test_user_without_a_saved_login_is_asked_to_log_in(store, browser):
+    with pytest.raises(NotLoggedInError, match="start_login"):
+        async with browser_session.user_page("nobody", "site"):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_wait_auto_scroll_and_scripts_run_in_the_page(store, browser, site_url):
+    _login("user-1", "user-1-session")
+
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url)
+        await page.auto_scroll(times=2, delay_ms=300)
+        await page.wait(1)
+        loaded = await page.evaluate("document.querySelectorAll('.loaded').length")
+        logged_out = await page.run_script("linkedin_auth_probe")
+
+    assert loaded == 1
+    assert logged_out is False
+
+
+@pytest.mark.asyncio
+async def test_browser_restarts_after_shutdown(store, browser, site_url):
+    _login("user-1", "user-1-session")
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url)
+    await browser_session.shutdown()
+
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url)
+        assert await page.evaluate("1 + 1") == 2
+
+
+@pytest.mark.asyncio
+async def test_url_is_where_the_page_ended_up(store, browser, site_url):
+    _login("user-1", "user-1-session")
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url + "?from=test")
+        assert page.url == site_url + "?from=test"
+
+
+@pytest.mark.asyncio
+async def test_wait_until_reports_whether_the_condition_came_true(store, browser, site_url):
+    _login("user-1", "user-1-session")
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url)
+        assert await page.wait_until("() => document.getElementById('late') !== null", timeout_ms=3_000) is True
+        assert await page.wait_until("() => document.getElementById('never') !== null", timeout_ms=200) is False
+
+
+@pytest.mark.asyncio
+async def test_click_first_clicks_only_a_visible_matching_element(store, browser, site_url):
+    _login("user-1", "user-1-session")
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url)
+        assert await page.click_first("main button", re.compile(r"^Show more$")) is True
+        assert await page.click_first("main button", re.compile(r"^Show all$")) is False
+        assert await page.click_first("main button", re.compile(r"^Nothing$")) is False
+        entries = await page.evaluate("document.querySelectorAll('#entries li').length")
+
+    assert entries == 2
+
+
+@pytest.mark.asyncio
+async def test_section_content_script_returns_main_text_and_links(store, browser, site_url):
+    _login("user-1", "user-1-session")
+    async with browser_session.user_page("user-1", "site") as page:
+        await page.goto(site_url)
+        content = await page.run_script("linkedin_section_content", {"selectors": ["main"]})
+
+    assert content["source"] == "root"
+    assert "First entry" in content["text"] and "Show more" in content["text"]
+    assert content["references"] == []

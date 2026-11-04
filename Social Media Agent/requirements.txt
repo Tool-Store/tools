@@ -1,0 +1,5 @@
+anyio
+cryptography
+mcp<2
+playwright
+python-dotenv

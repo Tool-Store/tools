@@ -1,0 +1,231 @@
+"""MCP server: registers the 10 functions the AI can call."""
+
+import logging
+import os
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+import anyio
+from dotenv import load_dotenv
+from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import TextContent
+
+import agent_reach
+import caller
+import responses
+import sessions
+import validators
+from constants import (
+    BROWSER_ACTION_TIMEOUT_SECONDS,
+    BROWSER_LOGIN_PAGES,
+    DEFAULT_RESULT_LIMIT,
+    LINKEDIN,
+    LINKEDIN_COMPANY_SECTIONS,
+    LINKEDIN_PROFILE_SECTIONS,
+    LOGIN_SITES,
+    MAX_EXTRA_SECTIONS,
+    MCP_ALLOWED_HOSTS,
+    MCP_ALLOWED_ORIGINS,
+    POST_CONTENT_TYPES,
+    POST_DATE_FILTERS,
+    POSTS_SITES,
+    PROFILE_SITES,
+    SEARCH_SITES,
+    SECONDS_PER_EXTRA_PAGE_LOAD,
+    X,
+)
+from linkedin import company as linkedin_company
+from linkedin import posts as linkedin_posts
+from linkedin import profile as linkedin_profile
+
+
+def _setup_logging() -> None:
+    level = os.getenv("LOG_LEVEL", "INFO").upper()
+    logging.basicConfig(level=getattr(logging, level, logging.INFO))
+
+
+async def _run(
+    site: str,
+    action: str,
+    arguments: List[str],
+    options: Optional[Dict[str, Any]] = None,
+) -> List[TextContent]:
+    user_id = caller.current_user_id()
+    # A worker thread keeps the server answering other calls during slow browser actions.
+    return await anyio.to_thread.run_sync(_run_in_thread, user_id, site, action, arguments, options)
+
+
+def _run_in_thread(
+    user_id: str,
+    site: str,
+    action: str,
+    arguments: List[str],
+    options: Optional[Dict[str, Any]],
+) -> List[TextContent]:
+    requests_left = sessions.count_request(user_id, site)
+    items = agent_reach.run_action(site, action, arguments, options)
+    return _answer(site, action, requests_left, items)
+
+
+async def _run_browser_action(
+    site: str,
+    action: str,
+    page_loads: int,
+    read: Callable[[str], Awaitable[Dict[str, Any]]],
+) -> List[TextContent]:
+    """Count the call's page loads, then run `read(user_id)` in the user's own browser session."""
+    user_id = caller.current_user_id()
+    requests_left = await anyio.to_thread.run_sync(sessions.count_request, user_id, site, page_loads)
+    timeout = BROWSER_ACTION_TIMEOUT_SECONDS + SECONDS_PER_EXTRA_PAGE_LOAD * (page_loads - 1)
+    try:
+        with anyio.fail_after(timeout):
+            result = await read(user_id)
+    except TimeoutError:
+        raise TimeoutError(f"{site} {action} did not finish within {timeout}s. Retry with fewer sections or later.") from None
+    header = {"site": site, "action": action, "requests_left_today": requests_left}
+    return responses.to_text_content(responses.fit_sections(header, result))
+
+
+def _answer(site: str, action: str, requests_left: int, items: List[Dict[str, Any]]) -> List[TextContent]:
+    header = {"site": site, "action": action, "requests_left_today": requests_left}
+    return responses.to_text_content(responses.fit_items(header, items))
+
+
+def create_server() -> FastMCP:
+    """Create the MCP server and register all functions."""
+    load_dotenv()
+    _setup_logging()
+    server = FastMCP(
+        "social-media-agent",
+        host=os.getenv("MCP_HOST", "127.0.0.1"),
+        port=int(os.getenv("MCP_PORT", "8000")),
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=MCP_ALLOWED_HOSTS,
+            allowed_origins=MCP_ALLOWED_ORIGINS,
+        ),
+    )
+    _register_login_tool(server)
+    _register_linkedin_tools(server)
+    _register_social_tools(server)
+    return server
+
+
+def _register_login_tool(server: FastMCP) -> None:
+    @server.tool()
+    async def start_login(site: str) -> List[TextContent]:
+        """Open a site's login page in the user's browser and return the link where the user logs in."""
+        site = validators.validate_site(site, LOGIN_SITES)
+        if site in BROWSER_LOGIN_PAGES:
+            login = await sessions.start_browser_login(caller.current_user_id(), site)
+        else:
+            login = await anyio.to_thread.run_sync(sessions.start_login, site)
+        return responses.to_text_content(login)
+
+
+def _register_linkedin_tools(server: FastMCP) -> None:
+    @server.tool()
+    async def search_linkedin_jobs(
+        query: str,
+        location: Optional[str] = None,
+        limit: int = DEFAULT_RESULT_LIMIT,
+    ) -> List[TextContent]:
+        """Search LinkedIn jobs with the user's logged-in LinkedIn session."""
+        options = {
+            "limit": validators.validate_limit(limit),
+            "location": validators.validate_location(location) if location else None,
+        }
+        return await _run(LINKEDIN, agent_reach.JOB_SEARCH, [validators.validate_query(query)], options)
+
+    @server.tool()
+    async def read_linkedin_job(url: str) -> List[TextContent]:
+        """Read one LinkedIn job post by its link."""
+        return await _run(LINKEDIN, agent_reach.JOB_READ, [validators.validate_linkedin_job_url(url)])
+
+    @server.tool()
+    async def get_linkedin_profile(profile_url: Optional[str] = None, sections: Optional[List[str]] = None) -> List[TextContent]:
+        """Read a LinkedIn profile as text: name, headline, location, About and Featured, plus any extra sections.
+
+        profile_url: e.g. https://www.linkedin.com/in/jane-doe/; leave empty for the user's own profile.
+        sections: up to 5 of experience, education, skills, projects, certifications, languages, honors,
+        volunteering, interests, contact_info, posts. Each one opens one more page and counts toward the daily limit.
+        Returns each section's text and links (people, companies, schools, posts) for follow-up calls.
+        """
+        url = validators.validate_linkedin_profile_url(profile_url) if profile_url else None
+        names = validators.validate_choices(sections, LINKEDIN_PROFILE_SECTIONS, "sections", MAX_EXTRA_SECTIONS)
+        return await _run_browser_action(
+            LINKEDIN, "profile", 1 + len(names), lambda user_id: linkedin_profile.read_profile(user_id, url, names)
+        )
+
+    @server.tool()
+    async def get_linkedin_company(company: str, sections: Optional[List[str]] = None) -> List[TextContent]:
+        """Read a LinkedIn company page as text: About (industry, size, headquarters, website), plus posts or jobs.
+
+        company: page name such as 'microsoft', or a link such as https://www.linkedin.com/company/microsoft/.
+        sections: any of posts, jobs. Each one opens one more page and counts toward the daily limit.
+        """
+        name = validators.validate_company(company)
+        names = validators.validate_choices(sections, LINKEDIN_COMPANY_SECTIONS, "sections", MAX_EXTRA_SECTIONS)
+        return await _run_browser_action(
+            LINKEDIN, "company", 1 + len(names), lambda user_id: linkedin_company.read_company(user_id, name, names)
+        )
+
+    @server.tool()
+    async def search_linkedin_posts(
+        keywords: str,
+        date_posted: Optional[str] = None,
+        content_type: Optional[str] = None,
+        pages: int = 1,
+    ) -> List[TextContent]:
+        """Search LinkedIn posts by keywords and return the results as text: authors, post text, reactions and links.
+
+        date_posted: past-24h, past-week or past-month. content_type: videos, images, job_posts, live_videos or documents.
+        pages: 1 to 3; more pages scroll further for more posts and count as more requests.
+        """
+        query = validators.validate_query(keywords)
+        posted = validators.validate_choice(date_posted, POST_DATE_FILTERS, "date_posted")
+        kind = validators.validate_choice(content_type, tuple(POST_CONTENT_TYPES), "content_type")
+        page_count = validators.validate_pages(pages)
+        return await _run_browser_action(
+            LINKEDIN,
+            "post search",
+            page_count,
+            lambda user_id: linkedin_posts.search_posts(user_id, query, posted, kind, page_count),
+        )
+
+
+def _register_social_tools(server: FastMCP) -> None:
+    @server.tool()
+    async def search_social(site: str, query: str, limit: int = DEFAULT_RESULT_LIMIT) -> List[TextContent]:
+        """Search Instagram users, Facebook, or X posts with the user's logged-in session."""
+        site = validators.validate_site(site, SEARCH_SITES)
+        options = {"limit": validators.validate_limit(limit)}
+        return await _run(site, agent_reach.SEARCH, [validators.validate_query(query)], options)
+
+    @server.tool()
+    async def get_social_profile(site: str, username: str) -> List[TextContent]:
+        """Get an Instagram, Facebook or X profile by username."""
+        site = validators.validate_site(site, PROFILE_SITES)
+        return await _run(site, agent_reach.PROFILE, [validators.validate_username(username)])
+
+    @server.tool()
+    async def get_social_posts(site: str, username: str, limit: int = DEFAULT_RESULT_LIMIT) -> List[TextContent]:
+        """Get recent Instagram posts or X tweets of a user."""
+        site = validators.validate_site(site, POSTS_SITES)
+        options = {"limit": validators.validate_limit(limit)}
+        return await _run(site, agent_reach.POSTS[site], [validators.validate_username(username)], options)
+
+    @server.tool()
+    async def get_x_thread(tweet: str) -> List[TextContent]:
+        """Get a tweet with its replies, by tweet id or link."""
+        return await _run(X, agent_reach.THREAD, [validators.validate_tweet(tweet)])
+
+
+def main() -> None:
+    server = create_server()
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    server.run(transport=transport)
+
+
+if __name__ == "__main__":
+    main()

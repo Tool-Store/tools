@@ -1,0 +1,197 @@
+name: "Social Media Agent"
+slug: "social-media-agent"
+short_description: "Read LinkedIn jobs and Instagram, Facebook and X content through your own logged-in browser session."
+long_description: |
+  An MCP tool that lets your AI read social media through your own browser session.
+  Log in once to LinkedIn, Instagram, Facebook or X in a private browser that only you use,
+  and the AI can search LinkedIn jobs, read profiles and recent posts, and follow X threads.
+  Your login stays on your own disk and is never shared. Requests are limited per site
+  each day to keep your accounts safe.
+version: "0.1.0"
+content_rating: "everyone"
+
+categories:
+  - "research"
+  - "social media"
+tags:
+  - "linkedin"
+  - "jobs"
+  - "instagram"
+  - "facebook"
+  - "x"
+  - "browser"
+
+website: "https://toolstore.com"
+support_email: "support@toolstore.com"
+
+pricing:
+  type: "free"
+
+functions:
+  - name: "start_login"
+    description: "Open a site's login page in the user's browser and return the link where the user logs in."
+    actions:
+      - "start login"
+    parameters:
+      type: "object"
+      properties:
+        site:
+          type: "string"
+          enum: ["linkedin", "instagram", "facebook", "x"]
+          description: "Site to log in to."
+      required: ["site"]
+
+  - name: "search_linkedin_jobs"
+    description: "Search LinkedIn jobs with the user's logged-in LinkedIn session."
+    actions:
+      - "search linkedin jobs"
+    parameters:
+      type: "object"
+      properties:
+        query:
+          type: "string"
+          description: "Job keywords, e.g. 'python developer'."
+        location:
+          type: "string"
+          description: "Optional city or country, e.g. 'Ahmedabad'."
+        limit:
+          type: "integer"
+          description: "Number of jobs to return (default 5, max 20)."
+      required: ["query"]
+
+  - name: "read_linkedin_job"
+    description: "Read one LinkedIn job post by its link."
+    actions:
+      - "read linkedin job"
+    parameters:
+      type: "object"
+      properties:
+        url:
+          type: "string"
+          description: "LinkedIn job link, e.g. https://www.linkedin.com/jobs/view/1234567890"
+      required: ["url"]
+
+  - name: "get_linkedin_profile"
+    description: "Read a LinkedIn profile as text: name, headline, location, About and Featured, plus any extra sections. Leave profile_url empty for the user's own profile. Returns each section's text and links (people, companies, schools, posts) for follow-up calls."
+    actions:
+      - "get linkedin profile"
+    parameters:
+      type: "object"
+      properties:
+        profile_url:
+          type: "string"
+          description: "Optional LinkedIn profile link, e.g. https://www.linkedin.com/in/jane-doe/. Empty means the user's own profile."
+        sections:
+          type: "array"
+          items:
+            type: "string"
+            enum: ["experience", "education", "skills", "projects", "certifications", "languages", "honors", "volunteering", "interests", "contact_info", "posts"]
+          description: "Up to 5 extra sections. Each opens one more page and counts toward the daily limit."
+      required: []
+
+  - name: "get_linkedin_company"
+    description: "Read a LinkedIn company page as text: About (industry, size, headquarters, website), plus its recent posts or open jobs."
+    actions:
+      - "get linkedin company"
+    parameters:
+      type: "object"
+      properties:
+        company:
+          type: "string"
+          description: "Company page name such as 'microsoft', or a link such as https://www.linkedin.com/company/microsoft/."
+        sections:
+          type: "array"
+          items:
+            type: "string"
+            enum: ["posts", "jobs"]
+          description: "Optional extra sections. Each opens one more page and counts toward the daily limit."
+      required: ["company"]
+
+  - name: "search_linkedin_posts"
+    description: "Search LinkedIn posts by keywords and return the results as text: authors, post text, reactions and links. Useful to see what people post about a topic."
+    actions:
+      - "search linkedin posts"
+    parameters:
+      type: "object"
+      properties:
+        keywords:
+          type: "string"
+          description: "What to search for, e.g. 'AI marketing'."
+        date_posted:
+          type: "string"
+          enum: ["past-24h", "past-week", "past-month"]
+          description: "Optional: only posts from this period."
+        content_type:
+          type: "string"
+          enum: ["videos", "images", "job_posts", "live_videos", "documents"]
+          description: "Optional: only posts of this kind."
+        pages:
+          type: "integer"
+          description: "1 to 3 (default 1). More pages scroll further for more posts and count as more requests."
+      required: ["keywords"]
+
+  - name: "search_social"
+    description: "Search Instagram users, Facebook, or X posts with the user's logged-in session."
+    actions:
+      - "search social"
+    parameters:
+      type: "object"
+      properties:
+        site:
+          type: "string"
+          enum: ["instagram", "facebook", "x"]
+          description: "Site to search."
+        query:
+          type: "string"
+          description: "What to search for."
+        limit:
+          type: "integer"
+          description: "Number of results to return (default 5, max 20)."
+      required: ["site", "query"]
+
+  - name: "get_social_profile"
+    description: "Get an Instagram, Facebook or X profile by username."
+    actions:
+      - "get social profile"
+    parameters:
+      type: "object"
+      properties:
+        site:
+          type: "string"
+          enum: ["instagram", "facebook", "x"]
+          description: "Site the profile is on."
+        username:
+          type: "string"
+          description: "Username without URL, e.g. 'natgeo'."
+      required: ["site", "username"]
+
+  - name: "get_social_posts"
+    description: "Get recent Instagram posts or X tweets of a user."
+    actions:
+      - "get social posts"
+    parameters:
+      type: "object"
+      properties:
+        site:
+          type: "string"
+          enum: ["instagram", "x"]
+          description: "Site to read posts from."
+        username:
+          type: "string"
+          description: "Username without URL, e.g. 'natgeo'."
+        limit:
+          type: "integer"
+          description: "Number of posts to return (default 5, max 20)."
+      required: ["site", "username"]
+
+  - name: "get_x_thread"
+    description: "Get a tweet with its replies, by tweet id or link."
+    actions:
+      - "get x thread"
+    parameters:
+      type: "object"
+      properties:
+        tweet:
+          type: "string"
+          description: "Tweet id, e.g. '1234567890', or link, e.g. https://x.com/user/status/1234567890"
+      required: ["tweet"]
