@@ -11,7 +11,7 @@ docker build -t social-media-agent:local .
 
 ## Run
 
-Create a `.env` from `.env.example` and set `LOGIN_ENCRYPTION_KEY` (and `TOOLSTORE_USER_ID` when calling the server directly, without Toolstore):
+Create a `.env` from `.env.example` and set `LOGIN_ENCRYPTION_KEY` (and `SOCIAL_AGENT_LOCAL_USER_ID` when calling the server directly, without Toolstore):
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -23,8 +23,7 @@ docker run -d --init --name social-agent \
   --shm-size=1g \
   --env-file .env \
   -e MCP_TRANSPORT=streamable-http -e MCP_HOST=0.0.0.0 \
-  -e LOGIN_STORE_DIR=/home/agent/.agent-reach/logins \
-  -e USAGE_FILE=/home/agent/.agent-reach/social-agent-usage.json \
+  -e USER_DATA_DIR=/home/agent/.agent-reach/user-data \
   -p 127.0.0.1:6080:6080 \
   -p 127.0.0.1:8000:8000 \
   -v social-agent-data:/home/agent/.agent-reach \
@@ -79,10 +78,10 @@ Add `--help` after an action to see its options, for example `agent-reach instag
 
 ## Test the MCP server
 
-Unit tests (offline, from this folder). `tests/test_browser_session.py` starts a real headless Chromium against a local page, so install Playwright's Chromium once first:
+Unit tests (offline, from this folder). `tests/test_browser_session.py` starts a real headless Chromium against a local page, so install Patchright's Chromium once first:
 
 ```bash
-python -m playwright install chromium
+python -m patchright install chromium
 python -m pytest tests
 ```
 
@@ -101,7 +100,7 @@ Live, with the MCP Inspector:
 npx @modelcontextprotocol/inspector
 ```
 
-In the Inspector, choose transport **Streamable HTTP**, URL `http://localhost:8000/mcp`, click **Connect**, then run `search_linkedin_jobs` with `{"query": "python", "limit": 2}`, or `get_linkedin_profile` with `{}` for the logged-in user's own profile, `{"profile_url": "https://www.linkedin.com/in/williamhgates/", "sections": ["experience", "education"]}`, `get_linkedin_company` with `{"company": "microsoft"}`, or `search_linkedin_posts` with `{"keywords": "AI marketing"}`.
+In the Inspector, choose transport **Streamable HTTP**, URL `http://localhost:8000/mcp`, click **Connect**, then run `search_linkedin_jobs` with `{"query": "python", "limit": 2}`, or `get_linkedin_profile` with `{}` for the logged-in user's own profile, `{"profile_url": "https://www.linkedin.com/in/williamhgates/", "sections": ["experience", "education"]}`, `get_linkedin_company` with `{"company": "microsoft"}`, or `search_linkedin_posts` with `{"keywords": "AI marketing"}`, or `get_instagram_profile` with `{"username": "natgeo"}` after `start_login` with `{"site": "instagram"}`.
 
 ## Check that logins survive a restart
 

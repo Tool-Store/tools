@@ -1,11 +1,11 @@
 name: "Social Media Agent"
 slug: "social-media-agent"
-short_description: "Read LinkedIn jobs and Instagram, Facebook and X content through your own logged-in browser session."
+short_description: "Read LinkedIn, Instagram, Facebook and X content through your own logged-in session."
 long_description: |
-  An MCP tool that lets your AI read social media through your own browser session.
-  Log in once to LinkedIn, Instagram, Facebook or X in a private browser that only you use,
-  and the AI can search LinkedIn jobs, read profiles and recent posts, and follow X threads.
-  Your login stays on your own disk and is never shared. Requests are limited per site
+  An MCP tool that lets your AI read social media through your own session.
+  Log in once to LinkedIn, Instagram, Facebook or X, and the AI can read profiles, recent posts,
+  companies, followers and search results, and see what is trending for you.
+  Your login is saved encrypted for you only and is never shared. Requests are limited per site
   each day to keep your accounts safe.
 version: "0.1.0"
 content_rating: "everyone"
@@ -130,8 +130,35 @@ functions:
           description: "1 to 3 (default 1). More pages scroll further for more posts and count as more requests."
       required: ["keywords"]
 
+  - name: "get_instagram_profile"
+    description: "Read an Instagram account's profile: name, bio, followers, following, post count, verified, category, website."
+    actions:
+      - "get instagram profile"
+    parameters:
+      type: "object"
+      properties:
+        username:
+          type: "string"
+          description: "Instagram username without URL, e.g. 'natgeo'."
+      required: ["username"]
+
+  - name: "get_instagram_posts"
+    description: "Read an Instagram account's recent posts (up to 12): full caption, likes or plays, comments, type, date, link."
+    actions:
+      - "get instagram posts"
+    parameters:
+      type: "object"
+      properties:
+        username:
+          type: "string"
+          description: "Instagram username without URL, e.g. 'natgeo'."
+        limit:
+          type: "integer"
+          description: "Number of posts to return (default 5, max 12)."
+      required: ["username"]
+
   - name: "search_social"
-    description: "Search Instagram users, Facebook, or X posts with the user's logged-in session."
+    description: "Search Facebook or X posts with the user's logged-in session."
     actions:
       - "search social"
     parameters:
@@ -139,7 +166,7 @@ functions:
       properties:
         site:
           type: "string"
-          enum: ["instagram", "facebook", "x"]
+          enum: ["facebook", "x"]
           description: "Site to search."
         query:
           type: "string"
@@ -150,7 +177,7 @@ functions:
       required: ["site", "query"]
 
   - name: "get_social_profile"
-    description: "Get an Instagram, Facebook or X profile by username."
+    description: "Get a Facebook or X profile by username."
     actions:
       - "get social profile"
     parameters:
@@ -158,7 +185,7 @@ functions:
       properties:
         site:
           type: "string"
-          enum: ["instagram", "facebook", "x"]
+          enum: ["facebook", "x"]
           description: "Site the profile is on."
         username:
           type: "string"
@@ -166,7 +193,7 @@ functions:
       required: ["site", "username"]
 
   - name: "get_social_posts"
-    description: "Get recent Instagram posts or X tweets of a user."
+    description: "Get recent X tweets of a user."
     actions:
       - "get social posts"
     parameters:
@@ -174,7 +201,7 @@ functions:
       properties:
         site:
           type: "string"
-          enum: ["instagram", "x"]
+          enum: ["x"]
           description: "Site to read posts from."
         username:
           type: "string"

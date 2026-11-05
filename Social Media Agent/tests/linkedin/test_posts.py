@@ -2,9 +2,12 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+from caller import Caller
 from linkedin import posts as linkedin_posts
 from linkedin import sections
 from linkedin.sections import Layout, SectionText
+
+USER = Caller("user-1")
 
 
 @pytest.fixture
@@ -27,10 +30,10 @@ def read(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_search_reads_the_results_page_scrolling_per_requested_page(read):
-    result = await linkedin_posts.search_posts("user-1", "AI marketing", None, None, pages=2)
+    result = await linkedin_posts.search_posts(USER, "AI marketing", None, None, pages=2)
 
     url = "https://www.linkedin.com/search/results/content/?keywords=AI+marketing&origin=FACETED_SEARCH"
-    assert read == [("opened", "user-1", "linkedin"), ("read", "search_results", url, Layout.SEARCH, 10)]
+    assert read == [("opened", USER, "linkedin"), ("read", "search_results", url, Layout.SEARCH, 10)]
     assert result == {"url": url, "sections": {"search_results": "Feed post\n\nAI is changing marketing"}}
 
 

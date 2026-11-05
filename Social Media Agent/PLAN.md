@@ -82,7 +82,7 @@ Read social media content with each user's own logged-in browser session by runn
 Direction from the client call: no per-user machine and no CLI between the AI and the site. Agent Reach's LinkedIn actions only run `opencli linkedin ...`, so the site code is ported from OpenCLI 2.0.2 (Apache-2.0): Python + Playwright, with OpenCLI's in-page scripts copied unchanged into `page_scripts/` (named `opencli_scripts/` until batch 2). All 23 OpenCLI LinkedIn commands, including Sales Navigator and the 3 write actions.
 
 Batch 1 - foundation and first function
-- [x] `caller.py`: user id from `X-Toolstore-JWT` / `Authorization` / `X-Toolstore-User-Id`; mismatch refused; `TOOLSTORE_USER_ID` for local runs
+- [x] `caller.py`: user id from `X-Toolstore-JWT` / `Authorization` / `X-Toolstore-User-Id`; mismatch refused; local runs use `SOCIAL_AGENT_LOCAL_USER_ID` (was `TOOLSTORE_USER_ID`, renamed 2026-11-05)
 - [x] `login_store.py`: per-user cookies, Fernet-encrypted, `0600`, folder named by user-id hash
 - [x] `browser_session.py`: one shared headless Chromium, a new context per request with the user's cookies, rotated cookies saved after success, `MAX_BROWSER_SESSIONS` limit; visible login window
 - [x] `linkedin/page.py`, `linkedin/profile.py`, `get_linkedin_profile`
@@ -124,11 +124,27 @@ Batch 4 - messages and Sales Navigator: `inbox`, `thread-snapshot`, `salesnav-se
 Batch 5 - write actions (dry-run by default): `connect`, `safe-send`, `salesnav-message`
 Then: proper login window in the web app (replaces the shared viewer), post generator, Instagram/Facebook/X the same way, remove Agent Reach and Node from the image.
 
+### Phase 5 - Instagram on browser sessions (decided 2026-11-05)
+The manager chose the same approach as LinkedIn (the user's own login in a private browser session) over third-party scrapers. LinkedIn restricted one test account and blocked a network within two days, and Instagram paused the Agent Reach test account on its first profile call, so the safety measures come first. Reading only; the 13 OpenCLI actions (post, reel, story, like, comment, follow, save) wait for the manager's approval. Reads are ported from OpenCLI 2.0.2 `clis/instagram` (Apache-2.0): one page load, then Instagram's own web API from inside the page.
+- [x] Patchright (stealth Playwright) instead of Playwright, for every site; all existing tests pass (318)
+- [x] `instagram/page.py`: open Instagram with the user's session, run a read script, clear errors (not logged in, user not found, rate-limited); real-browser tests against a local fake Instagram API that only answers with the saved session cookie
+- [x] `instagram/reads.py` (one file instead of the planned accounts.py and posts.py: each would have held about 20 lines): `get_instagram_profile`, `get_instagram_posts`, `search_instagram`, `get_instagram_followers`, `get_instagram_following`, `get_instagram_explore`, `get_instagram_saved`
+- [x] Instagram login (`sessionid` cookie), own daily limit (20 Instagram requests per user, 2-3 per call), Instagram removed from the Agent Reach path; 352 tests pass, lint clean
+- [x] Live test 1 (2026-11-05): login with an email code worked and all cookies were saved, but every read answered "Instagram has no account". Diagnosis: Instagram answered the API with its logged-out 404 page, because the login came from the visible window ("Chrome/156") and the reads from the headless shell ("HeadlessChrome/156", also in its client hints), which sites treat as a bot; this likely also contributed to the LinkedIn restriction. Fixed: both browsers use the full Chromium build, the hidden one in its headless mode (normal client hints) with the visible window's browser name; a logged-out 404 page is reported as an expired login. Regression tests: the browser tells a local server no "Headless" anywhere, and a fake Instagram's logged-out 404 page asks to log in again (354 tests).
+- [x] Live test 2 (2026-11-05): login and the fixed browser worked (pages loaded logged in), but Instagram's website no longer uses the web API OpenCLI calls (`/api/v1/users/web_profile_info` answered 404 even when logged in); the site now loads data with GraphQL requests and puts the profile and its first 12 posts as JSON inside the profile page.
+- [x] Phase A (approved 2026-11-05): `get_instagram_profile` and `get_instagram_posts` read the JSON the profile page already carries (posts up to 12, falls back to the page summary for counts), one request per call; `search_instagram`, `get_instagram_followers`, `get_instagram_following`, `get_instagram_explore` and `get_instagram_saved` taken out of the function list until each is ported and live-tested
+- [x] Live test 3 (2026-11-05): `get_instagram_profile natgeo` returned the full profile (followers, bio, website, avatar) and `get_instagram_posts natgeo limit 3` returned 3 posts with full captions, likes, comments, type, date and link; no login or wait page
+- [ ] Phase B: search, followers, following, explore, saved, one at a time after checking what each page carries live
+- [ ] Docker test
+
 Before any cloud use
-- [ ] The tool trusts the user-id headers. Toolstore signs calls with `X-Internal-Token` (HS256, `INTERNAL_TOKEN_SECRET`), but that secret is only given to the MCP API, Tool Router and Dev API. The platform must give it to this tool so it can verify every call, or the MCP port must be reachable only from the Tool Router.
-- [ ] The login viewer is one shared screen: any user with the link sees whoever is logging in. Replace it with a per-user login window before more than one real user.
-- [ ] DNS-rebinding allow-list (`127.0.0.1`, `localhost`) must include the platform's host name.
-- [ ] Never set `TOOLSTORE_USER_ID` in production: a request without user headers would then act as that user instead of being refused.
+- [x] User records on Toolstore (2026-11-05): logins and daily counts in the user's Toolstore data (`user_store.py`, own sub-collection), read with the request's user token and `X-Internal-Token`, so the Dev API checks who is asking; no secret in the tool and no volume needed. Backend fix the same day: the Dev API now refuses another user's data (403).
+- [ ] The login viewer is one shared screen: any user with the link sees whoever is logging in. Replace it with a per-user login page (one-time link, private browser, same port) before dev.
+- [x] Allowed hosts from `MCP_ALLOWED_HOSTS` (default localhost; `*` turns the check off for cluster-only ports; empty refuses to start).
+- [x] `TOOLSTORE_USER_ID` is never used as the caller (Toolstore sets it to the developer's id at publish); the local setting is `SOCIAL_AGENT_LOCAL_USER_ID`.
+- [ ] Daily counts are exact within one server process; several replicas could each let one extra request through at the same moment.
+- [x] Bug found live (2026-11-05): when LinkedIn redirected the page while it was being read, the call failed with Playwright's "Execution context was destroyed". Page scripts now run again on the page it moved to (up to 3 runs), and a security check or login page is reported with its address (regression tests with a real self-redirecting page).
+- [ ] Risk seen live (2026-11-05): after several fresh automated logins in two days (laptop, Docker, another tool), LinkedIn asked the test account to verify a phone number. Before real users: reuse saved sessions as long as possible (rotated cookies are already saved), keep one browser profile and location per user, and consider a stealth browser (Patchright, as stickerdaniel/linkedin-mcp-server uses). Never verify a test account with a number tied to a personal account.
 
 ### Later (platform work, outside this folder)
 - Per-user container or VM creation, routing, idle stop and deletion

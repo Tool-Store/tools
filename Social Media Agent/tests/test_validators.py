@@ -216,3 +216,9 @@ def test_search_pages_are_limited(pages, ok):
     else:
         with pytest.raises(ValueError, match="pages must be between 1 and 3"):
             validators.validate_pages(pages)
+
+
+def test_limit_can_have_its_own_maximum():
+    assert validators.validate_limit(12, 12) == 12
+    with pytest.raises(ValueError, match="limit must be between 1 and 12, got 13"):
+        validators.validate_limit(13, 12)

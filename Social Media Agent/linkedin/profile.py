@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Sequence, Tuple
 from urllib.parse import urlsplit
 
 import browser_session
+from caller import Caller
 from constants import LINKEDIN, LINKEDIN_ORIGIN, LINKEDIN_PROFILE_PATH_PATTERN
 from errors import PageReadError
 from linkedin.sections import Layout, SectionSpec, read_main_then_sections
@@ -35,13 +36,13 @@ SECTION_PAGES: Dict[str, Tuple[str, Layout]] = {
 }
 
 
-async def read_profile(user_id: str, profile_url: Optional[str], sections: Sequence[str]) -> Dict[str, Any]:
+async def read_profile(caller: Caller, profile_url: Optional[str], sections: Sequence[str]) -> Dict[str, Any]:
     """Read a profile's main page and the requested sections; with no URL, the user's own profile.
 
     `sections` must already be validated names from SECTION_PAGES.
     """
     requested_url = profile_url or OWN_PROFILE_URL
-    async with browser_session.user_page(user_id, LINKEDIN) as page:
+    async with browser_session.user_page(caller, LINKEDIN) as page:
         return await read_main_then_sections(
             page,
             SectionSpec("main_profile", requested_url, Layout.STANDARD, end_markers=MAIN_PAGE_END),

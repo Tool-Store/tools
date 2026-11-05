@@ -1,48 +1,42 @@
 """
-Keeps each user's site logins (browser cookies) encrypted on disk.
+Keeps each user's site logins (browser cookies) encrypted, as one record per site in user_store.
 
-Cookies work like a password, so they are encrypted with LOGIN_ENCRYPTION_KEY and the files are
-readable by the server user only. Folders are named by a hash of the user id, not the id itself.
+Cookies work like a password, so they are encrypted with LOGIN_ENCRYPTION_KEY before they leave the tool;
+whoever can read the stored record (on disk or in Toolstore) still cannot use the login.
 """
 
-import hashlib
 import json
 import os
-from pathlib import Path
 from typing import Any, Dict, List
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from constants import (
-    DEFAULT_LOGIN_STORE_DIR,
-    LOGIN_ENCRYPTION_KEY_ENV,
-    LOGIN_STORE_DIR_ENV,
-)
+import user_store
+from caller import Caller
+from constants import LOGIN_ENCRYPTION_KEY_ENV
 from errors import LoginStoreError, NotLoggedInError, login_needed_message
-from file_store import write_atomically
 
 
-def save_cookies(user_id: str, site: str, cookies: List[Dict[str, Any]]) -> None:
+def save_cookies(caller: Caller, site: str, cookies: List[Dict[str, Any]]) -> None:
     if not cookies:
         raise ValueError(f"No cookies to save for {site}; the login did not finish.")
-    write_atomically(_login_file(user_id, site), _fernet().encrypt(json.dumps(cookies).encode("utf-8")))
+    encrypted = _fernet().encrypt(json.dumps(cookies).encode("utf-8"))
+    user_store.save(caller, _record_name(site), encrypted.decode("ascii"))
 
 
-def load_cookies(user_id: str, site: str) -> List[Dict[str, Any]]:
-    path = _login_file(user_id, site)
-    if not path.is_file():
+def load_cookies(caller: Caller, site: str) -> List[Dict[str, Any]]:
+    encrypted = user_store.load(caller, _record_name(site))
+    if not isinstance(encrypted, str) or not encrypted:
         raise NotLoggedInError(login_needed_message(site, "Not logged in to"))
     try:
-        return json.loads(_fernet().decrypt(path.read_bytes()))
+        return json.loads(_fernet().decrypt(encrypted.encode("ascii")))
     except InvalidToken:
-        # The key changed or the file is damaged; a fresh login replaces it.
+        # The key changed or the record is damaged; a fresh login replaces it.
         raise NotLoggedInError(login_needed_message(site, "The saved login cannot be read for")) from None
 
 
-def _login_file(user_id: str, site: str) -> Path:
-    folder = hashlib.sha256(user_id.encode("utf-8")).hexdigest()
-    root = Path(os.getenv(LOGIN_STORE_DIR_ENV, DEFAULT_LOGIN_STORE_DIR)).expanduser()
-    return root / folder / f"{site}.enc"
+def _record_name(site: str) -> str:
+    return f"login_{site}"
 
 
 def _fernet() -> Fernet:

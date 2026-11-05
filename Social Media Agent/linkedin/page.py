@@ -16,11 +16,13 @@ _WHITESPACE = re.compile(r"\s+")
 
 
 async def require_login(page: SitePage) -> None:
-    """Raise NotLoggedInError when LinkedIn shows its login wall instead of the page."""
+    """Raise NotLoggedInError when LinkedIn shows its login wall or security check instead of the page."""
     if await page.run_script("linkedin_auth_probe"):
-        raise NotLoggedInError(
-            login_needed_message(LINKEDIN, "LinkedIn showed its login page, so the saved session has expired. Not logged in to")
+        problem = (
+            f"LinkedIn sent the saved session to its security check or login page ({page.url}); verify the account "
+            "on LinkedIn if it asks, then log in again. Not logged in to"
         )
+        raise NotLoggedInError(login_needed_message(LINKEDIN, problem))
 
 
 def normalize_whitespace(value: Any) -> str:

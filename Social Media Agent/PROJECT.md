@@ -21,16 +21,16 @@ It is separate from Social Media Scraper, which reads public data through third-
 |---|---|---|
 | LinkedIn | `profile` (with sections), `company`, `post search` | Browser sessions (section pages) |
 | LinkedIn | `jobs` (search), `read` (job post) | Agent Reach (optional level) |
-| Instagram | `search` (users), `profile`, `posts` | Agent Reach (experimental) |
+| Instagram | `profile`, `posts` (up to 12) | Browser sessions (data the profile page already carries) |
 | Facebook | `search`, `profile` | Agent Reach (experimental) |
 | X / Twitter | `search`, `profile`, `tweets`, `thread` | Agent Reach (experimental) |
 
-Feed, post analytics, profile analytics and services are next (`PLAN.md` batch 2b), then people search, connections, messages, Sales Navigator, and connection requests and messages.
+LinkedIn: feed, post analytics, profile analytics and services are next (`PLAN.md` batch 2b), then people search, connections, messages, Sales Navigator, and connection requests and messages. Instagram: `search`, `followers`, `following`, `explore` and `saved` come back one at a time after each is checked live (`PLAN.md` phase 5, Phase B); actions (post, reel, story, like, comment, follow) wait for the manager's approval (`PLAN.md` phase 5).
 
 ## Technical stack
 
 - Python 3.11 (`python:3.11-slim-bookworm`)
-- Playwright (Python) with its Chromium, for browser sessions; page scripts in `page_scripts/`
+- Patchright (Playwright with automation signs removed) with its Chromium, for browser sessions; page scripts in `page_scripts/`
 - LinkedIn page reading ported from stickerdaniel/linkedin-mcp-server 4.29.0 and OpenCLI 2.0.2 (both Apache-2.0, see `third_party/NOTICE`)
 - `cryptography` (Fernet) for saved logins
 - Agent Reach CLI, installed from the Tool-Store fork at a pinned commit
@@ -44,11 +44,12 @@ Feed, post analytics, profile analytics and services are next (`PLAN.md` batch 2
 - `get_linkedin_profile` - Read a LinkedIn profile as text (own profile when no link is given), with up to 5 extra sections (experience, education, skills, projects, certifications, languages, honors, volunteering, interests, contact info, posts). Browser session.
 - `get_linkedin_company` - Read a company's About page, plus its posts or jobs. Browser session.
 - `search_linkedin_posts` - Search posts by keywords, optionally by date and content type, 1-3 pages. Browser session.
+- `get_instagram_profile`, `get_instagram_posts` - Instagram reads (posts up to 12). Browser session, one profile page per call, own daily limit (`INSTAGRAM_DAILY_REQUEST_LIMIT`, default 20).
 - `search_linkedin_jobs` - Search LinkedIn jobs.
 - `read_linkedin_job` - Read one LinkedIn job post.
-- `search_social` - Search Instagram users, Facebook, or X posts.
-- `get_social_profile` - Get an Instagram, Facebook or X profile.
-- `get_social_posts` - Get recent Instagram posts or X tweets.
+- `search_social` - Search Facebook or X posts.
+- `get_social_profile` - Get a Facebook or X profile.
+- `get_social_posts` - Get recent X tweets.
 - `get_x_thread` - Get a tweet with its replies.
 
 Every request uses the browser session only (`--backend opencli` on the Agent Reach path), is limited per user per site per day (`DAILY_REQUEST_LIMIT`, default 50), and returns at most 20 items within 20,000 characters (section answers cut their longest sections instead and name them in `truncated_sections`). On the browser-session path every page a call loads counts as one request, and a call that would go over the limit is refused. A request counts as soon as it passes input checks, even if the site then fails, because the site still received it. When a site rate-limits the account, the error says how long to wait.
@@ -62,7 +63,7 @@ Phase 1 (container, login, persistence) and Phase 2 (MCP server) are done on Age
 - Agent Reach is installed only from the Tool-Store fork, pinned to a commit.
 - All persisted state lives in `~/.agent-reach`; only that path is persisted.
 - Saved logins are encrypted with `LOGIN_ENCRYPTION_KEY` (from the environment, never in code); without it, logins cannot be saved or read.
-- The user id comes from the Toolstore request headers and is trusted as given (JWT signature not checked here), so the MCP port must only be reachable through the Toolstore Tool Router.
+- The user id comes from the Toolstore request headers (JWT signature not checked here). On Toolstore, saved logins and counts are read through the Dev API with the request's own user token and `X-Internal-Token`, so Toolstore checks who is asking; locally the user is `SOCIAL_AGENT_LOCAL_USER_ID`. `TOOLSTORE_USER_ID` is never used: Toolstore sets it to the developer's id.
 - Code taken from OpenCLI and stickerdaniel/linkedin-mcp-server keeps their Apache-2.0 licenses and a notice of every ported file and change (`third_party/`).
 - The login viewer is published on localhost only and has no password, so it must never be exposed on a public interface.
 - The user always logs in themselves; the tool never handles passwords.

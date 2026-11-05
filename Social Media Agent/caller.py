@@ -2,19 +2,21 @@
 Works out which Toolstore user made the current MCP request.
 
 The Toolstore Tool Router adds the user's JWT and user id as headers to every tool call. The id
-inside the JWT wins, and a different X-Toolstore-User-Id header is refused, so a caller cannot point
-a valid token at another user's saved logins. The JWT signature is not checked here: the tool must
-only be reachable through the Tool Router (see PLAN.md). Locally, TOOLSTORE_USER_ID names the user.
+inside the JWT wins, and a different X-Toolstore-User-Id header is refused. The JWT signature is not
+checked here; the tokens are passed on to Toolstore's Dev API, which checks them before it hands out
+the user's saved data. Locally, SOCIAL_AGENT_LOCAL_USER_ID names the user.
 """
 
 import base64
 import binascii
 import json
 import os
+from dataclasses import dataclass
 from typing import Mapping
 
 from constants import (
     AUTHORIZATION_HEADER,
+    INTERNAL_TOKEN_HEADER,
     JWT_HEADER,
     JWT_USER_ID_CLAIMS,
     LOCAL_USER_ID_ENV,
@@ -23,12 +25,20 @@ from constants import (
 from errors import CallerError
 
 
-def current_user_id() -> str:
-    """Return the user id for the MCP request being handled; call it on the request's own task."""
-    return user_id_from_headers(_request_headers())
+@dataclass(frozen=True)
+class Caller:
+    user_id: str
+    # The user's Toolstore JWT and Toolstore's internal token, passed on when the tool calls the Dev API.
+    token: str = ""
+    internal_token: str = ""
 
 
-def user_id_from_headers(headers: Mapping[str, str]) -> str:
+def current_caller() -> Caller:
+    """Return the caller of the MCP request being handled; call it on the request's own task."""
+    return caller_from_headers(_request_headers())
+
+
+def caller_from_headers(headers: Mapping[str, str]) -> Caller:
     lowered = {key.lower(): str(value).strip() for key, value in headers.items()}
     token = lowered.get(JWT_HEADER.lower()) or _bearer_token(lowered.get(AUTHORIZATION_HEADER.lower(), ""))
     token_user_id = _user_id_from_jwt(token) if token else ""
@@ -41,7 +51,7 @@ def user_id_from_headers(headers: Mapping[str, str]) -> str:
             "No Toolstore user on this request. Call the tool through Toolstore, "
             f"or set {LOCAL_USER_ID_ENV} when running it locally."
         )
-    return user_id
+    return Caller(user_id, token=token, internal_token=lowered.get(INTERNAL_TOKEN_HEADER.lower(), ""))
 
 
 def _request_headers() -> Mapping[str, str]:

@@ -50,7 +50,7 @@ def test_missing_items_return_empty_list(fake_run):
     _, reply = fake_run
     _set_reply(reply, {"ok": True})
 
-    assert agent_reach.run_action("instagram", "profile", ["natgeo"]) == []
+    assert agent_reach.run_action("facebook", "profile", ["natgeo"]) == []
 
 
 def test_need_login_error_tells_caller_to_start_login(fake_run):
@@ -115,7 +115,7 @@ def test_rate_limit_tells_caller_how_long_to_wait(fake_run, hint, wait):
     _set_reply(reply, {"ok": False, "error": {"code": "RATE_LIMITED", "message": "HTTP 429", "hint": hint}}, 1)
 
     with pytest.raises(AgentReachError, match=f"Retry in {wait}, not sooner") as error:
-        agent_reach.run_action("instagram", "profile", ["natgeo"])
+        agent_reach.run_action("facebook", "profile", ["natgeo"])
     assert error.value.code == "RATE_LIMITED"
 
 

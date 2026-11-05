@@ -11,13 +11,14 @@ from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlencode
 
 import browser_session
+from caller import Caller
 from constants import LINKEDIN, LINKEDIN_ORIGIN, POST_CONTENT_TYPES, SEARCH_SCROLLS_PER_PAGE
 from linkedin import sections
 from linkedin.sections import Layout, SectionSpec
 
 
 async def search_posts(
-    user_id: str, keywords: str, date_posted: Optional[str], content_type: Optional[str], pages: int
+    caller: Caller, keywords: str, date_posted: Optional[str], content_type: Optional[str], pages: int
 ) -> Dict[str, Any]:
     """Return the text of the post search results; the AI reads authors, posts and counts from it.
 
@@ -25,7 +26,7 @@ async def search_posts(
     """
     url = search_url(keywords, date_posted, content_type)
     spec = SectionSpec("search_results", url, Layout.SEARCH, max_loads=pages * SEARCH_SCROLLS_PER_PAGE)
-    async with browser_session.user_page(user_id, LINKEDIN) as page:
+    async with browser_session.user_page(caller, LINKEDIN) as page:
         results = await sections.read_sections(page, [spec])
     return sections.section_result(url, results)
 

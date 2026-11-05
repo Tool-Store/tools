@@ -1,59 +1,60 @@
 import asyncio
-import json
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 import sessions
-from constants import (
-    DAILY_REQUEST_LIMIT_ENV,
-    DEFAULT_VIEWER_URL,
-    USAGE_FILE_ENV,
-    VIEWER_URL_ENV,
-)
+import user_store
+from caller import Caller
+from constants import DAILY_REQUEST_LIMIT_ENV, DEFAULT_VIEWER_URL, INSTAGRAM_DAILY_REQUEST_LIMIT_ENV, VIEWER_URL_ENV
 from errors import DailyLimitError, LoginBusyError, LoginTimeoutError
+
+USER = Caller("user-1")
+OTHER = Caller("user-2")
 
 
 @pytest.fixture
-def usage_file(tmp_path, monkeypatch):
-    path = tmp_path / "usage.json"
-    monkeypatch.setenv(USAGE_FILE_ENV, str(path))
+def usage(local_store, monkeypatch):
     monkeypatch.setenv(DAILY_REQUEST_LIMIT_ENV, "2")
     monkeypatch.setattr(sessions, "_today", lambda: "2026-11-02")
-    return path
+    return local_store
 
 
-def test_requests_are_counted_per_site_and_saved(usage_file):
-    assert sessions.count_request("user-1", "linkedin") == 1
-    assert sessions.count_request("user-1", "x") == 1
-    assert sessions.count_request("user-1", "linkedin") == 0
-
-    assert json.loads(usage_file.read_text()) == {"date": "2026-11-02", "counts": {"user-1": {"linkedin": 2, "x": 1}}}
+def _saved_counts(caller=USER):
+    return user_store.load(caller, "usage")["counts"]
 
 
-def test_request_over_daily_limit_is_rejected_and_not_counted(usage_file):
-    sessions.count_request("user-1", "linkedin")
-    sessions.count_request("user-1", "linkedin")
+def test_requests_are_counted_per_site_and_saved(usage):
+    assert sessions.count_request(USER, "linkedin") == 1
+    assert sessions.count_request(USER, "x") == 1
+    assert sessions.count_request(USER, "linkedin") == 0
+
+    assert user_store.load(USER, "usage") == {"date": "2026-11-02", "counts": {"linkedin": 2, "x": 1}}
+
+
+def test_request_over_daily_limit_is_rejected_and_not_counted(usage):
+    sessions.count_request(USER, "linkedin")
+    sessions.count_request(USER, "linkedin")
 
     with pytest.raises(DailyLimitError, match="Daily limit of 2 requests for linkedin reached"):
-        sessions.count_request("user-1", "linkedin")
-    assert json.loads(usage_file.read_text())["counts"]["user-1"]["linkedin"] == 2
+        sessions.count_request(USER, "linkedin")
+    assert _saved_counts()["linkedin"] == 2
 
 
-def test_parallel_requests_are_all_counted(usage_file, monkeypatch):
+def test_parallel_requests_are_all_counted(usage, monkeypatch):
     monkeypatch.setenv(DAILY_REQUEST_LIMIT_ENV, "100")
 
     with ThreadPoolExecutor(max_workers=10) as pool:
-        remaining = list(pool.map(lambda site: sessions.count_request("user-1", site), ["linkedin"] * 40))
+        remaining = list(pool.map(lambda site: sessions.count_request(USER, site), ["linkedin"] * 40))
 
     assert sorted(remaining) == list(range(60, 100))
-    assert json.loads(usage_file.read_text())["counts"]["user-1"]["linkedin"] == 40
+    assert _saved_counts()["linkedin"] == 40
 
 
-def test_parallel_requests_never_exceed_the_limit(usage_file):
+def test_parallel_requests_never_exceed_the_limit(usage):
     def try_request(_):
         try:
-            sessions.count_request("user-1", "x")
+            sessions.count_request(USER, "x")
             return True
         except DailyLimitError:
             return False
@@ -62,30 +63,39 @@ def test_parallel_requests_never_exceed_the_limit(usage_file):
         allowed = list(pool.map(try_request, range(10)))
 
     assert allowed.count(True) == 2
-    assert json.loads(usage_file.read_text())["counts"]["user-1"]["x"] == 2
+    assert _saved_counts()["x"] == 2
 
 
-def test_count_resets_on_a_new_day(usage_file, monkeypatch):
-    sessions.count_request("user-1", "linkedin")
-    sessions.count_request("user-1", "linkedin")
+def test_count_resets_on_a_new_day(usage, monkeypatch):
+    sessions.count_request(USER, "linkedin")
+    sessions.count_request(USER, "linkedin")
 
     monkeypatch.setattr(sessions, "_today", lambda: "2026-11-03")
 
-    assert sessions.count_request("user-1", "linkedin") == 1
+    assert sessions.count_request(USER, "linkedin") == 1
 
 
-def test_unreadable_usage_file_starts_a_new_count(usage_file):
-    usage_file.write_text("not json")
+def test_unreadable_usage_record_starts_a_new_count(usage):
+    sessions.count_request(USER, "x")
+    [record] = [path for path in usage.rglob("usage.json")]
+    record.write_text("not json")
 
-    assert sessions.count_request("user-1", "instagram") == 1
+    assert sessions.count_request(USER, "x") == 1
+
+
+@pytest.mark.parametrize("damaged", ["text", {"date": "2026-11-02"}, {"date": "2026-11-02", "counts": [1]}])
+def test_usage_record_of_the_wrong_shape_starts_a_new_count(usage, damaged):
+    user_store.save(USER, "usage", damaged)
+
+    assert sessions.count_request(USER, "linkedin") == 1
 
 
 @pytest.mark.parametrize("raw_limit", ["0", "-1", "many"])
-def test_invalid_daily_limit_setting_is_rejected(usage_file, monkeypatch, raw_limit):
+def test_invalid_daily_limit_setting_is_rejected(usage, monkeypatch, raw_limit):
     monkeypatch.setenv(DAILY_REQUEST_LIMIT_ENV, raw_limit)
 
     with pytest.raises(ValueError, match=f"{DAILY_REQUEST_LIMIT_ENV} must be a whole number"):
-        sessions.count_request("user-1", "linkedin")
+        sessions.count_request(USER, "linkedin")
 
 
 def test_start_login_opens_login_and_returns_viewer_link(monkeypatch):
@@ -107,19 +117,13 @@ def test_start_login_uses_configured_viewer_link(monkeypatch):
     assert sessions.start_login("x")["viewer_url"] == "https://viewer.example/u/123"
 
 
-def test_each_user_has_their_own_daily_limit(usage_file):
-    sessions.count_request("user-1", "linkedin")
-    sessions.count_request("user-1", "linkedin")
+def test_each_user_has_their_own_daily_limit(usage):
+    sessions.count_request(USER, "linkedin")
+    sessions.count_request(USER, "linkedin")
 
-    assert sessions.count_request("user-2", "linkedin") == 1
+    assert sessions.count_request(OTHER, "linkedin") == 1
     with pytest.raises(DailyLimitError):
-        sessions.count_request("user-1", "linkedin")
-
-
-def test_usage_file_from_before_per_user_counts_is_replaced(usage_file):
-    usage_file.write_text(json.dumps({"date": "2026-11-02", "counts": {"user-1": 5}}))
-
-    assert sessions.count_request("user-1", "linkedin") == 1
+        sessions.count_request(USER, "linkedin")
 
 
 @pytest.fixture
@@ -145,7 +149,7 @@ async def test_browser_login_saves_the_users_cookies_once_they_log_in(browser_lo
     finished, saved = browser_login
     monkeypatch.delenv(VIEWER_URL_ENV, raising=False)
 
-    reply = await sessions.start_browser_login("user-1", "linkedin")
+    reply = await sessions.start_browser_login(USER, "linkedin")
     assert reply["viewer_url"] == DEFAULT_VIEWER_URL
     assert "saved automatically" in reply["next"]
     assert saved == []
@@ -153,20 +157,20 @@ async def test_browser_login_saves_the_users_cookies_once_they_log_in(browser_lo
     finished.set()
     await sessions._login_task
 
-    assert saved == [("user-1", "linkedin", [{"name": "li_at", "value": "session", "opened": "https://www.linkedin.com/login"}])]
+    assert saved == [(USER, "linkedin", [{"name": "li_at", "value": "session", "opened": "https://www.linkedin.com/login"}])]
 
 
 @pytest.mark.asyncio
 async def test_second_login_while_one_is_open_is_refused(browser_login):
     finished, _ = browser_login
-    await sessions.start_browser_login("user-1", "linkedin")
+    await sessions.start_browser_login(USER, "linkedin")
 
     with pytest.raises(LoginBusyError, match="Another login is open"):
-        await sessions.start_browser_login("user-2", "linkedin")
+        await sessions.start_browser_login(OTHER, "linkedin")
 
     finished.set()
     await sessions._login_task
-    await sessions.start_browser_login("user-2", "linkedin")
+    await sessions.start_browser_login(OTHER, "linkedin")
     await sessions._login_task
 
 
@@ -175,7 +179,7 @@ async def test_unfinished_login_is_logged_and_nothing_is_saved(browser_login, mo
     finished, saved = browser_login
     monkeypatch.setitem(sessions.BROWSER_LOGIN_PAGES, "linkedin", ("https://www.linkedin.com/login", "fail"))
 
-    await sessions.start_browser_login("user-1", "linkedin")
+    await sessions.start_browser_login(USER, "linkedin")
     finished.set()
     await sessions._login_task
 
@@ -183,18 +187,33 @@ async def test_unfinished_login_is_logged_and_nothing_is_saved(browser_login, mo
     assert "The linkedin login did not finish" in caplog.text
 
 
-def test_a_call_that_loads_several_pages_counts_each_page(usage_file, monkeypatch):
+def test_a_call_that_loads_several_pages_counts_each_page(usage, monkeypatch):
     monkeypatch.setenv(DAILY_REQUEST_LIMIT_ENV, "10")
 
-    assert sessions.count_request("user-1", "linkedin", page_loads=6) == 4
-    assert json.loads(usage_file.read_text())["counts"]["user-1"]["linkedin"] == 6
+    assert sessions.count_request(USER, "linkedin", page_loads=6) == 4
+    assert _saved_counts()["linkedin"] == 6
 
 
-def test_a_call_that_would_go_over_the_limit_is_refused_and_not_counted(usage_file, monkeypatch):
+def test_a_call_that_would_go_over_the_limit_is_refused_and_not_counted(usage, monkeypatch):
     monkeypatch.setenv(DAILY_REQUEST_LIMIT_ENV, "10")
-    sessions.count_request("user-1", "linkedin", page_loads=8)
+    sessions.count_request(USER, "linkedin", page_loads=8)
 
     with pytest.raises(DailyLimitError, match="needs 3 page loads but only 2 of 10 are left"):
-        sessions.count_request("user-1", "linkedin", page_loads=3)
-    assert json.loads(usage_file.read_text())["counts"]["user-1"]["linkedin"] == 8
-    assert sessions.count_request("user-1", "linkedin", page_loads=2) == 0
+        sessions.count_request(USER, "linkedin", page_loads=3)
+    assert _saved_counts()["linkedin"] == 8
+    assert sessions.count_request(USER, "linkedin", page_loads=2) == 0
+
+
+def test_instagram_has_its_own_lower_limit(usage, monkeypatch):
+    monkeypatch.delenv(INSTAGRAM_DAILY_REQUEST_LIMIT_ENV, raising=False)
+
+    assert sessions.count_request(USER, "instagram", page_loads=3) == 17
+    assert sessions.count_request(USER, "x") == 1
+
+
+def test_instagram_limit_comes_from_its_own_setting(usage, monkeypatch):
+    monkeypatch.setenv(INSTAGRAM_DAILY_REQUEST_LIMIT_ENV, "4")
+
+    sessions.count_request(USER, "instagram", page_loads=4)
+    with pytest.raises(DailyLimitError, match="Daily limit of 4 requests for instagram reached"):
+        sessions.count_request(USER, "instagram")

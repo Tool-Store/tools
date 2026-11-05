@@ -51,9 +51,9 @@ def validate_username(username: str) -> str:
     return candidate
 
 
-def validate_limit(limit: int) -> int:
-    if not 1 <= limit <= MAX_RESULT_LIMIT:
-        raise ValueError(f"limit must be between 1 and {MAX_RESULT_LIMIT}, got {limit}")
+def validate_limit(limit: int, maximum: int = MAX_RESULT_LIMIT) -> int:
+    if not 1 <= limit <= maximum:
+        raise ValueError(f"limit must be between 1 and {maximum}, got {limit}")
     return limit
 
 

@@ -2,7 +2,7 @@
 Checks a running Social Media Agent server the way an AI client would.
 
 By default no site is contacted and nothing counts toward the daily limit: the script checks
-that the server answers, lists its 10 functions, and rejects bad input. With --live it also calls
+that the server answers, lists its 12 functions, and rejects bad input. With --live it also calls
 each site once through the user's logged-in sessions and prints what each site returned.
 
 Usage, from the tool folder with the container running:
@@ -34,6 +34,8 @@ EXPECTED_TOOLS = {
     "get_linkedin_profile",
     "get_linkedin_company",
     "search_linkedin_posts",
+    "get_instagram_profile",
+    "get_instagram_posts",
 }
 INVALID_CALLS = [
     ("search_social", {"site": "linkedin", "query": "python"}, "Unsupported site"),
@@ -45,6 +47,8 @@ INVALID_CALLS = [
     ("get_linkedin_profile", {"sections": ["hobbies"]}, "Unknown sections"),
     ("get_linkedin_company", {"company": "https://example.com/company/x"}, "Invalid LinkedIn company"),
     ("search_linkedin_posts", {"keywords": "AI", "pages": 9}, "pages must be between"),
+    ("get_instagram_profile", {"username": "https://instagram.com/a"}, "Invalid username"),
+    ("get_social_profile", {"site": "instagram", "username": "natgeo"}, "Unsupported site"),
 ]
 LIVE_CALLS = [
     ("get_linkedin_profile", {}),
@@ -52,7 +56,7 @@ LIVE_CALLS = [
     ("get_linkedin_company", {"company": "microsoft"}),
     ("search_linkedin_posts", {"keywords": "AI marketing"}),
     ("get_social_profile", {"site": "facebook", "username": "nasa"}),
-    ("get_social_profile", {"site": "instagram", "username": "natgeo"}),
+    ("get_instagram_profile", {"username": "natgeo"}),
     ("get_social_profile", {"site": "x", "username": "OpenAI"}),
 ]
 

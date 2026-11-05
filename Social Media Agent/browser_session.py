@@ -14,20 +14,25 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional, Pattern
 
-from playwright.async_api import Browser, Page, Playwright, async_playwright
+# Patchright is Playwright with the signs of automation removed, so sites flag the browser less often.
+from patchright.async_api import Browser, Page, Playwright, async_playwright
 
 # Raised by page actions when the browser fails (timeout, closed page); site readers catch it per section.
-from playwright.async_api import Error as BrowserError  # noqa: F401
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+from patchright.async_api import Error as BrowserError
+from patchright.async_api import TimeoutError as PlaywrightTimeoutError
 
 import login_store
 import validators
+from caller import Caller
 from constants import (
+    BROWSER_CHANNEL,
     BROWSER_LOCALE,
     DEFAULT_MAX_BROWSER_SESSIONS,
     DOM_QUIET_MS,
     MAX_BROWSER_SESSIONS_ENV,
+    NAVIGATED_AWAY,
     NAVIGATION_TIMEOUT_MS,
+    PAGE_SCRIPT_ATTEMPTS,
     PAGE_SETTLE_MS,
 )
 from errors import LoginTimeoutError
@@ -38,6 +43,7 @@ SCRIPTS_DIR = Path(__file__).parent / "page_scripts"
 
 _playwright: Optional[Playwright] = None
 _browser: Optional[Browser] = None
+_user_agent: Optional[str] = None
 # Created on first use so they belong to the server's running event loop.
 _launch_lock: Optional[asyncio.Lock] = None
 _slots: Optional[asyncio.Semaphore] = None
@@ -63,16 +69,13 @@ class SitePage:
         await self._wait_until_quiet(int(seconds * 1000))
 
     async def auto_scroll(self, times: int, delay_ms: int) -> None:
-        await self._page.evaluate(load_script("auto_scroll"), [times, delay_ms])
+        await self._evaluate(load_script("auto_scroll"), [times, delay_ms])
 
     async def evaluate(self, expression: str) -> Any:
-        return await self._page.evaluate(expression)
+        return await self._evaluate(expression)
 
     async def run_script(self, name: str, argument: Any = None) -> Any:
-        script = load_script(name)
-        if argument is None:
-            return await self._page.evaluate(script)
-        return await self._page.evaluate(script, argument)
+        return await self._evaluate(load_script(name), argument)
 
     async def wait_until(self, condition: str, timeout_ms: int) -> bool:
         """Wait for a page condition (a JS function); False when it is still not true after `timeout_ms`."""
@@ -98,7 +101,20 @@ class SitePage:
         return True
 
     async def _wait_until_quiet(self, max_ms: int) -> None:
-        await self._page.evaluate(load_script("dom_stable"), [max_ms, min(DOM_QUIET_MS, max_ms)])
+        await self._evaluate(load_script("dom_stable"), [max_ms, min(DOM_QUIET_MS, max_ms)])
+
+    async def _evaluate(self, script: str, argument: Any = None) -> Any:
+        """Run a page script; when the page moves on while it runs (a redirect), run it again on the new page."""
+        for attempt in range(1, PAGE_SCRIPT_ATTEMPTS + 1):
+            try:
+                if argument is None:
+                    return await self._page.evaluate(script)
+                return await self._page.evaluate(script, argument)
+            except BrowserError as error:
+                if NAVIGATED_AWAY not in str(error) or attempt == PAGE_SCRIPT_ATTEMPTS:
+                    raise
+                log.info("The page moved on to %s while a script ran; running it there", self._page.url)
+                await self._page.wait_for_load_state("load", timeout=NAVIGATION_TIMEOUT_MS)
 
 
 @lru_cache(maxsize=None)
@@ -107,22 +123,24 @@ def load_script(name: str) -> str:
 
 
 @asynccontextmanager
-async def user_page(user_id: str, site: str) -> AsyncIterator[SitePage]:
-    """Yield a page logged in as the user; raises NotLoggedInError when they have no saved login."""
-    cookies = login_store.load_cookies(user_id, site)
+async def user_page(caller: Caller, site: str) -> AsyncIterator[SitePage]:
+    """Yield a page logged in as the caller; raises NotLoggedInError when they have no saved login."""
+    # The login may come from Toolstore over HTTP, so it is loaded and saved off the event loop.
+    cookies = await asyncio.to_thread(login_store.load_cookies, caller, site)
     async with _session_slots():
-        context = await (await _shared_browser()).new_context(locale=BROWSER_LOCALE)
+        browser = await _shared_browser()
+        context = await browser.new_context(locale=BROWSER_LOCALE, user_agent=_user_agent)
         try:
             await context.add_cookies(cookies)
             yield SitePage(await context.new_page())
-            login_store.save_cookies(user_id, site, await context.cookies())
+            await asyncio.to_thread(login_store.save_cookies, caller, site, await context.cookies())
         finally:
             await context.close()
 
 
 async def wait_for_login(login_url: str, login_cookie: str, timeout_seconds: int, poll_seconds: float) -> List[Dict[str, Any]]:
     """Show the login page in a visible browser and return its cookies once `login_cookie` is set."""
-    browser = await (await _shared_playwright()).chromium.launch(headless=False)
+    browser = await (await _shared_playwright()).chromium.launch(headless=False, channel=BROWSER_CHANNEL)
     try:
         context = await browser.new_context(locale=BROWSER_LOCALE)
         await (await context.new_page()).goto(login_url, timeout=NAVIGATION_TIMEOUT_MS)
@@ -139,12 +157,12 @@ async def wait_for_login(login_url: str, login_cookie: str, timeout_seconds: int
 
 async def shutdown() -> None:
     """Close the shared browser; the next request starts a new one."""
-    global _browser, _playwright, _launch_lock, _slots
+    global _browser, _playwright, _launch_lock, _slots, _user_agent
     if _browser is not None:
         await _browser.close()
     if _playwright is not None:
         await _playwright.stop()
-    _browser = _playwright = _launch_lock = _slots = None
+    _browser = _playwright = _launch_lock = _slots = _user_agent = None
 
 
 async def _shared_playwright() -> Playwright:
@@ -157,13 +175,28 @@ async def _shared_playwright() -> Playwright:
 
 
 async def _shared_browser() -> Browser:
-    global _browser
+    global _browser, _user_agent
     playwright = await _shared_playwright()
     async with _launch_lock:
         if _browser is None or not _browser.is_connected():
-            _browser = await playwright.chromium.launch(headless=True)
+            _browser = await playwright.chromium.launch(headless=True, channel=BROWSER_CHANNEL)
+            _user_agent = await _visible_user_agent(_browser)
             log.info("Started the shared headless browser")
     return _browser
+
+
+async def _visible_user_agent(browser: Browser) -> str:
+    """The browser's own name with "HeadlessChrome" as "Chrome", exactly as the visible login window reports it.
+
+    A session logged in through the visible window would otherwise come back from a "HeadlessChrome", which
+    sites treat as a bot. The full-browser headless mode (BROWSER_CHANNEL) already reports normal client hints.
+    """
+    context = await browser.new_context()
+    try:
+        agent = await (await context.new_page()).evaluate("navigator.userAgent")
+    finally:
+        await context.close()
+    return str(agent).replace("HeadlessChrome/", "Chrome/")
 
 
 def _session_slots() -> asyncio.Semaphore:

@@ -45,13 +45,14 @@ COPY --chmod=755 entrypoint.sh /usr/local/bin/entrypoint.sh
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-# Playwright's Chromium for the per-request browser sessions, in a path the agent user can read.
+# Patchright's Chromium (stealth Playwright) for the per-request browser sessions, in a path the agent user can read.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
-RUN python -m playwright install --with-deps chromium \
+RUN python -m patchright install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/*
-COPY server.py constants.py errors.py validators.py caller.py sessions.py login_store.py file_store.py \
+COPY server.py constants.py errors.py validators.py caller.py sessions.py login_store.py user_store.py file_store.py \
     browser_session.py responses.py agent_reach.py command_runner.py ./
 COPY linkedin ./linkedin
+COPY instagram ./instagram
 COPY page_scripts ./page_scripts
 # Licenses and NOTICE of the Apache-2.0 code ported into linkedin/ and page_scripts/
 COPY third_party ./third_party

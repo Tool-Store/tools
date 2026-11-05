@@ -2,10 +2,13 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+from caller import Caller
 from errors import PageReadError
 from linkedin import company as linkedin_company
 from linkedin import sections
 from linkedin.sections import Layout, SectionText
+
+USER = Caller("user-1")
 
 
 class _Reader:
@@ -46,7 +49,7 @@ def reader(monkeypatch):
 async def test_about_page_then_requested_sections_under_the_name_linkedin_redirected_to(reader):
     fake = reader("https://www.linkedin.com/company/microsoft/about/")
 
-    result = await linkedin_company.read_company("user-1", "1035", ["posts", "jobs"])
+    result = await linkedin_company.read_company(USER, "1035", ["posts", "jobs"])
 
     assert fake.read == [
         ("about", "https://www.linkedin.com/company/1035/about/", Layout.STANDARD),
@@ -63,7 +66,7 @@ async def test_unknown_company_is_reported_and_no_more_pages_are_loaded(reader, 
     fake = reader(landed_on)
 
     with pytest.raises(PageReadError, match="LinkedIn has no company page 'no-such-co'"):
-        await linkedin_company.read_company("user-1", "no-such-co", ["posts"])
+        await linkedin_company.read_company(USER, "no-such-co", ["posts"])
     assert len(fake.read) == 1
 
 
@@ -90,7 +93,7 @@ def test_every_offered_section_has_a_page():
 async def test_about_page_ends_before_recruiting_commitments_and_locations(reader, page_text, kept):
     fake = reader("https://www.linkedin.com/company/microsoft/about/")
 
-    await linkedin_company.read_company("user-1", "microsoft", [])
+    await linkedin_company.read_company(USER, "microsoft", [])
 
     starts = [match.start() for marker in fake.main_spec.end_markers if (match := marker.search(page_text))]
     assert page_text[: min(starts)].strip() == kept

@@ -17,6 +17,10 @@ class LoginStoreError(RuntimeError):
     """Saved logins cannot be used because the store is not set up (missing or invalid key)."""
 
 
+class UserStoreError(RuntimeError):
+    """A user's records could not be read or saved in Toolstore's user storage."""
+
+
 class NotLoggedInError(RuntimeError):
     """The user has no usable saved login for a site and must log in again."""
 
@@ -27,6 +31,10 @@ class LoginBusyError(RuntimeError):
 
 class LoginTimeoutError(TimeoutError):
     """The user did not finish logging in before the login window closed."""
+
+
+class RateLimitedError(RuntimeError):
+    """The site is limiting requests for this account; retrying now would make it worse."""
 
 
 class PageReadError(RuntimeError):

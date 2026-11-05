@@ -10,6 +10,7 @@ from typing import Any, Dict, Sequence, Tuple
 from urllib.parse import quote, urlsplit
 
 import browser_session
+from caller import Caller
 from constants import LINKEDIN, LINKEDIN_COMPANY_PATH_PATTERN, LINKEDIN_ORIGIN
 from errors import PageReadError
 from linkedin.sections import Layout, SectionSpec, read_main_then_sections
@@ -28,13 +29,13 @@ SECTION_PAGES: Dict[str, Tuple[str, Layout]] = {
 }
 
 
-async def read_company(user_id: str, company: str, sections: Sequence[str]) -> Dict[str, Any]:
+async def read_company(caller: Caller, company: str, sections: Sequence[str]) -> Dict[str, Any]:
     """Read a company's About page and the requested sections.
 
     `company` must already be a validated page name (e.g. 'microsoft'); `sections` names from SECTION_PAGES.
     """
     about_url = f"{LINKEDIN_ORIGIN}/company/{quote(company, safe='')}/about/"
-    async with browser_session.user_page(user_id, LINKEDIN) as page:
+    async with browser_session.user_page(caller, LINKEDIN) as page:
         return await read_main_then_sections(
             page,
             SectionSpec("about", about_url, Layout.STANDARD, end_markers=ABOUT_PAGE_END),

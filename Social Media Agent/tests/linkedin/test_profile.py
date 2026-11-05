@@ -2,10 +2,14 @@ from contextlib import asynccontextmanager
 
 import pytest
 
+from caller import Caller
 from errors import PageReadError
 from linkedin import profile as linkedin_profile
 from linkedin import sections
 from linkedin.sections import Layout, SectionText
+
+USER = Caller("user-1")
+
 
 MAIN_TEXT = SectionText("Bill Gates\n\nChair, Gates Foundation")
 
@@ -56,9 +60,9 @@ async def test_main_page_then_each_requested_section_page_is_read(reader):
     fake = reader("https://www.linkedin.com/in/williamhgates/")
 
     gates = "https://www.linkedin.com/in/williamhgates/"
-    result = await linkedin_profile.read_profile("user-1", gates, ["experience", "posts", "contact_info"])
+    result = await linkedin_profile.read_profile(USER, gates, ["experience", "posts", "contact_info"])
 
-    assert fake.opened == [("user-1", "linkedin")]
+    assert fake.opened == [(USER, "linkedin")]
     assert fake.read == [
         ("main_profile", "https://www.linkedin.com/in/williamhgates/", Layout.STANDARD),
         ("experience", "https://www.linkedin.com/in/williamhgates/details/experience/", Layout.DETAILS),
@@ -80,7 +84,7 @@ async def test_main_page_then_each_requested_section_page_is_read(reader):
 async def test_own_profile_sections_use_the_handle_linkedin_redirected_to(reader):
     fake = reader("https://www.linkedin.com/in/adity-v-30a8a3448/?miniProfileUrn=x")
 
-    result = await linkedin_profile.read_profile("user-1", None, ["skills"])
+    result = await linkedin_profile.read_profile(USER, None, ["skills"])
 
     assert fake.read[0][1] == "https://www.linkedin.com/in/me/"
     assert fake.read[1][1] == "https://www.linkedin.com/in/adity-v-30a8a3448/details/skills/"
@@ -93,7 +97,7 @@ async def test_page_that_is_not_a_profile_is_reported_and_no_more_pages_are_load
     fake = reader(landed_on)
 
     with pytest.raises(PageReadError, match="LinkedIn has no profile at https://www.linkedin.com/in/no-one/"):
-        await linkedin_profile.read_profile("user-1", "https://www.linkedin.com/in/no-one/", ["experience"])
+        await linkedin_profile.read_profile(USER, "https://www.linkedin.com/in/no-one/", ["experience"])
     assert len(fake.read) == 1
 
 
@@ -101,7 +105,7 @@ async def test_page_that_is_not_a_profile_is_reported_and_no_more_pages_are_load
 async def test_rate_limited_main_page_skips_the_other_sections(reader):
     fake = reader("https://www.linkedin.com/in/williamhgates/", main=SectionText("", error=sections.RATE_LIMITED))
 
-    result = await linkedin_profile.read_profile("user-1", "https://www.linkedin.com/in/williamhgates/", ["experience"])
+    result = await linkedin_profile.read_profile(USER, "https://www.linkedin.com/in/williamhgates/", ["experience"])
 
     assert len(fake.read) == 1
     assert result["section_errors"] == {"main_profile": sections.RATE_LIMITED, "experience": sections.SKIPPED_AFTER_RATE_LIMIT}
@@ -117,7 +121,7 @@ def test_every_offered_section_has_a_page():
 async def test_main_page_ends_where_the_activity_feed_starts(reader):
     fake = reader("https://www.linkedin.com/in/williamhgates/")
 
-    await linkedin_profile.read_profile("user-1", "https://www.linkedin.com/in/williamhgates/", [])
+    await linkedin_profile.read_profile(USER, "https://www.linkedin.com/in/williamhgates/", [])
 
     page_text = "About\n\nChair.\n\nActivity\n\n40,786,142 followers\n\nFollow\nPosts\n\nBill Gates\n\nUseful advice"
     [marker] = fake.main_spec.end_markers

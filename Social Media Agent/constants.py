@@ -18,9 +18,10 @@ X_DOMAINS = ("x.com", "twitter.com")
 
 # Which sites each MCP function supports
 LOGIN_SITES = (LINKEDIN, INSTAGRAM, FACEBOOK, X)
-SEARCH_SITES = (INSTAGRAM, FACEBOOK, X)
-PROFILE_SITES = (INSTAGRAM, FACEBOOK, X)
-POSTS_SITES = (INSTAGRAM, X)
+# Sites still read through Agent Reach (search_social, get_social_profile, get_social_posts)
+SEARCH_SITES = (FACEBOOK, X)
+PROFILE_SITES = (FACEBOOK, X)
+POSTS_SITES = (X,)
 
 # ── Request limits ──────────────────────────────────────────────────────────────────────────
 DEFAULT_RESULT_LIMIT = 5
@@ -31,33 +32,55 @@ MAX_RESPONSE_CHARS = 20_000
 MIN_CUT_SECTION_CHARS = 200
 DAILY_REQUEST_LIMIT_ENV = "DAILY_REQUEST_LIMIT"
 DEFAULT_DAILY_REQUEST_LIMIT = 50
-USAGE_FILE_ENV = "USAGE_FILE"
-# Kept inside ~/.agent-reach because that folder is the persisted volume.
-DEFAULT_USAGE_FILE = "~/.agent-reach/social-agent-usage.json"
+# Instagram flags automated use faster than other sites, so it has its own, lower limit.
+INSTAGRAM_DAILY_REQUEST_LIMIT_ENV = "INSTAGRAM_DAILY_REQUEST_LIMIT"
+DEFAULT_INSTAGRAM_DAILY_REQUEST_LIMIT = 20
 
 # ── Caller identity (headers added by the Toolstore Tool Router) ────────────────────────────
 JWT_HEADER = "X-Toolstore-JWT"
 AUTHORIZATION_HEADER = "Authorization"
 USER_ID_HEADER = "X-Toolstore-User-Id"
+# Toolstore's signed proof that a call came through it; passed on to the Dev API unchanged.
+INTERNAL_TOKEN_HEADER = "X-Internal-Token"
 JWT_USER_ID_CLAIMS = ("user_id", "sub", "uid")
-# Names the user when the server runs locally without Toolstore in front of it.
-LOCAL_USER_ID_ENV = "TOOLSTORE_USER_ID"
+# Names the user when the server runs locally without Toolstore in front of it. Not TOOLSTORE_USER_ID:
+# Toolstore sets that to the developer's own id at publish time.
+LOCAL_USER_ID_ENV = "SOCIAL_AGENT_LOCAL_USER_ID"
 
 # ── Logins ──────────────────────────────────────────────────────────────────────────────────
 # Sites already moved from Agent Reach to our own browser sessions: (login page, cookie set once logged in).
-BROWSER_LOGIN_PAGES = {LINKEDIN: ("https://www.linkedin.com/login", "li_at")}
+BROWSER_LOGIN_PAGES = {
+    LINKEDIN: ("https://www.linkedin.com/login", "li_at"),
+    INSTAGRAM: ("https://www.instagram.com/accounts/login/", "sessionid"),
+}
 LOGIN_WINDOW_SECONDS = 600
 LOGIN_POLL_SECONDS = 2
 LOGIN_ENCRYPTION_KEY_ENV = "LOGIN_ENCRYPTION_KEY"
-LOGIN_STORE_DIR_ENV = "LOGIN_STORE_DIR"
-# Kept inside ~/.agent-reach because that folder is the persisted volume.
-DEFAULT_LOGIN_STORE_DIR = "~/.agent-reach/logins"
 VIEWER_URL_ENV = "VIEWER_URL"
 DEFAULT_VIEWER_URL = "http://localhost:6080/vnc.html"
 
-# ── Browser sessions (Playwright) ───────────────────────────────────────────────────────────
+# ── Per-user records (saved logins, daily usage) ────────────────────────────────────────────
+# Set by Toolstore when it publishes the tool; with all three, records live in the user's Toolstore data.
+TOOLSTORE_API_BASE_ENV = "TOOLSTORE_API_BASE"
+TOOLSTORE_DEV_SLUG_ENV = "TOOLSTORE_DEV_SLUG"
+TOOLSTORE_TOOL_SLUG_ENV = "TOOLSTORE_TOOL_SLUG"
+# This tool's own sub-collection, so Toolstore's activation secrets and OAuth data are never touched.
+USER_RECORDS_SUB_COLLECTION = "social_media_agent"
+TOOLSTORE_REQUEST_TIMEOUT_SECONDS = 20
+# Without Toolstore: one JSON file per record; kept inside ~/.agent-reach because that folder is the persisted volume.
+USER_DATA_DIR_ENV = "USER_DATA_DIR"
+DEFAULT_USER_DATA_DIR = "~/.agent-reach/user-data"
+
+# ── Browser sessions (Patchright) ───────────────────────────────────────────────────────────
 BROWSER_LOCALE = "en-US"
+# The full Chromium build for both the visible login window and the hidden reading browser. Its headless mode
+# reports normal client hints (the stripped-down headless shell says "HeadlessChrome", which sites treat as a bot).
+BROWSER_CHANNEL = "chromium"
 NAVIGATION_TIMEOUT_MS = 30_000
+# Playwright's message when a page script is cut off because the page moved on (a redirect).
+NAVIGATED_AWAY = "Execution context was destroyed"
+# A page script is run again on the new page, for redirect chains up to this many runs in all.
+PAGE_SCRIPT_ATTEMPTS = 3
 # After a page loads, wait up to this long for it to stop changing (OpenCLI's default).
 PAGE_SETTLE_MS = 1_000
 DOM_QUIET_MS = 500
@@ -105,6 +128,15 @@ STANDARD_SCROLL_DELAY_MS = 500
 ACTIVITY_SCROLLS = 10
 ACTIVITY_SCROLL_DELAY_MS = 1_000
 
+# ── Instagram reads ─────────────────────────────────────────────────────────────────────────
+INSTAGRAM_ORIGIN = "https://www.instagram.com"
+# Where Instagram sends a session it does not accept.
+INSTAGRAM_LOGIN_WALL_PATHS = ("/accounts/login", "/challenge", "/accounts/suspended")
+# Instagram requests each read makes, counted toward the daily limit: one page view, nothing else.
+INSTAGRAM_READ_COSTS = {"profile": 1, "posts": 1}
+# A profile page carries its first 12 posts; more would need scrolling, which is more activity on the account.
+INSTAGRAM_MAX_POSTS = 12
+
 # ── Agent Reach commands (Instagram, Facebook, X and LinkedIn jobs until they are ported) ───
 AGENT_REACH_BINARY = "agent-reach"
 # Agent Reach allows its slowest browser actions 120s; leave headroom for start-up.
@@ -112,9 +144,12 @@ COMMAND_TIMEOUT_SECONDS = 150
 MAX_COMMAND_OUTPUT_CHARS = 200_000
 
 # ── MCP server ──────────────────────────────────────────────────────────────────────────────
-# The MCP server answers only requests addressed to localhost. In the container it listens on
-# 0.0.0.0, where the MCP library does not turn on DNS-rebinding protection by itself.
-MCP_ALLOWED_HOSTS = ["127.0.0.1:*", "localhost:*"]
+# Host names the MCP server answers to (DNS-rebinding protection), comma-separated; "host:*" allows any port.
+# On Toolstore set it to the tool's cluster host, or "*" to turn the check off: the MCP port is then reachable
+# only inside the cluster, never from a browser. The library does not turn the check on by itself on 0.0.0.0.
+MCP_ALLOWED_HOSTS_ENV = "MCP_ALLOWED_HOSTS"
+DEFAULT_MCP_ALLOWED_HOSTS = "127.0.0.1:*,localhost:*"
+ANY_HOST = "*"
 MCP_ALLOWED_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*"]
 
 # ── Input patterns ──────────────────────────────────────────────────────────────────────────

@@ -11,14 +11,20 @@ Licensed under the Apache License, Version 2.0.
 Files in page_scripts/ (page scripts sent to the browser):
 - dom_stable.js, auto_scroll.js: src/browser/dom-helpers.ts
 - linkedin_auth_probe.js: clis/linkedin/shared.js (buildAuthProbeScript)
+- instagram_read.js: field mapping from clis/instagram/profile.js and user.js
 
 Python ports:
 - linkedin/page.py: clis/linkedin/shared.js (login-wall check, whitespace clean-up)
+- instagram/page.py: clis/instagram/_shared/read-response.js (error mapping)
 
 Changes made by Tool Store:
 - Each script is cut out of its OpenCLI source file and saved on its own, so Python can send it to the page.
 - dom_stable.js and auto_scroll.js take their numbers as a function argument instead of text templating.
 - The command logic around the scripts is rewritten in Python for per-user browser sessions.
+- instagram_read.js no longer calls Instagram's web API, which Instagram's website stopped using (it answers
+  404); it reads the profile and its first 12 posts from the JSON data the profile page already carries, falls
+  back to the page summary for counts, returns booleans instead of Yes/No, keeps full captions, adds each
+  post's link and date, and reports logged-out and "please wait" pages as their own errors.
 
 ================================================================================
 mcp-server-linkedin
