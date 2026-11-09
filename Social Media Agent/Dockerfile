@@ -53,8 +53,9 @@ COPY server.py constants.py errors.py validators.py caller.py sessions.py login_
     browser_session.py responses.py agent_reach.py command_runner.py ./
 COPY linkedin ./linkedin
 COPY instagram ./instagram
+COPY x ./x
 COPY page_scripts ./page_scripts
-# Licenses and NOTICE of the Apache-2.0 code ported into linkedin/ and page_scripts/
+# Licenses and NOTICE of the Apache-2.0 code ported into linkedin/, instagram/, x/ and page_scripts/
 COPY third_party ./third_party
 
 USER agent

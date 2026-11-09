@@ -14,13 +14,15 @@ EXPECTED_TOOLS = {
     "read_linkedin_job",
     "search_social",
     "get_social_profile",
-    "get_social_posts",
-    "get_x_thread",
     "get_linkedin_profile",
     "get_linkedin_company",
     "search_linkedin_posts",
     "get_instagram_profile",
     "get_instagram_posts",
+    "search_x",
+    "get_x_profile",
+    "get_x_tweets",
+    "get_x_thread",
 }
 
 
@@ -82,23 +84,15 @@ def test_linkedin_job_search_without_location_omits_it(mcp_server, recorded):
     assert recorded["actions"][0][3] == {"limit": 5, "location": None}
 
 
-@pytest.mark.parametrize(("site", "action"), [("x", "tweets")])
-def test_posts_use_each_sites_action_name(mcp_server, recorded, site, action):
-    _call(mcp_server, "get_social_posts", {"site": site, "username": "@natgeo", "limit": 2})
-
-    assert recorded["actions"] == [(site, action, ["natgeo"], {"limit": 2})]
-
-
 @pytest.mark.parametrize(
     ("name", "arguments", "expected"),
     [
         ("read_linkedin_job", {"url": "https://www.linkedin.com/jobs/view/4482478523"},
          ("linkedin", "read", ["https://www.linkedin.com/jobs/view/4482478523"], None)),
         ("search_social", {"site": "Facebook", "query": "openai"}, ("facebook", "search", ["openai"], {"limit": 5})),
-        ("get_social_profile", {"site": "x", "username": "OpenAI"}, ("x", "profile", ["OpenAI"], None)),
-        ("get_x_thread", {"tweet": "1234567890"}, ("x", "thread", ["1234567890"], None)),
+        ("get_social_profile", {"site": "facebook", "username": "nasa"}, ("facebook", "profile", ["nasa"], None)),
     ],
-    ids=["read-job", "search", "profile", "thread"],
+    ids=["read-job", "search", "profile"],
 )
 def test_each_action_reaches_agent_reach(mcp_server, recorded, name, arguments, expected):
     _call(mcp_server, name, arguments)
@@ -110,11 +104,10 @@ def test_each_action_reaches_agent_reach(mcp_server, recorded, name, arguments, 
     ("name", "arguments", "message"),
     [
         ("search_social", {"site": "linkedin", "query": "python"}, "Unsupported site"),
-        ("get_social_posts", {"site": "facebook", "username": "zuck"}, "Unsupported site"),
+        ("get_social_profile", {"site": "x", "username": "OpenAI"}, "Unsupported site"),
         ("search_linkedin_jobs", {"query": "python", "limit": 99}, "limit must be between"),
-        ("get_x_thread", {"tweet": "not-a-tweet"}, "Invalid tweet"),
     ],
-    ids=["linkedin-search", "facebook-posts", "limit-too-high", "bad-tweet"],
+    ids=["linkedin-search", "x-profile", "limit-too-high"],
 )
 def test_invalid_input_is_rejected_before_counting(mcp_server, recorded, name, arguments, message):
     with pytest.raises(Exception, match=message):
@@ -128,9 +121,9 @@ def test_start_login_returns_viewer_link_without_counting(mcp_server, recorded, 
         server_module.sessions, "start_login", lambda site: {"site": site, "viewer_url": "http://localhost:6080/vnc.html"}
     )
 
-    response = _call(mcp_server, "start_login", {"site": "X"})
+    response = _call(mcp_server, "start_login", {"site": "Facebook"})
 
-    assert response == {"site": "x", "viewer_url": "http://localhost:6080/vnc.html"}
+    assert response == {"site": "facebook", "viewer_url": "http://localhost:6080/vnc.html"}
     assert recorded["counted"] == []
 
 
@@ -149,7 +142,7 @@ def test_slow_request_does_not_block_other_calls(mcp_server, monkeypatch):
     async def call_both():
         await asyncio.gather(
             mcp_server.call_tool("search_linkedin_jobs", {"query": "python"}),
-            mcp_server.call_tool("start_login", {"site": "x"}),
+            mcp_server.call_tool("start_login", {"site": "facebook"}),
         )
 
     asyncio.run(call_both())
@@ -275,7 +268,10 @@ def test_slow_browser_action_times_out_with_a_clear_message(mcp_server, recorded
     assert recorded["counted"] == [("user-1", "linkedin", 1)]
 
 
-def test_linkedin_login_opens_our_browser_login_for_the_calling_user(mcp_server, recorded, monkeypatch):
+@pytest.mark.parametrize(("site", "key"), [("LinkedIn", "linkedin"), ("Instagram", "instagram"), ("X", "x")])
+def test_browser_session_sites_log_in_through_our_browser_login_for_the_calling_user(
+    mcp_server, recorded, monkeypatch, site, key
+):
     started = []
 
     async def start_browser_login(caller, site):
@@ -285,9 +281,9 @@ def test_linkedin_login_opens_our_browser_login_for_the_calling_user(mcp_server,
     monkeypatch.setattr(server_module.sessions, "start_browser_login", start_browser_login)
     monkeypatch.setattr(server_module.sessions, "start_login", lambda site: pytest.fail("Agent Reach login used"))
 
-    response = _call(mcp_server, "start_login", {"site": "LinkedIn"})
+    response = _call(mcp_server, "start_login", {"site": site})
 
-    assert started == [("user-1", "linkedin")]
+    assert started == [("user-1", key)]
     assert response["viewer_url"] == "http://localhost:6080/vnc.html"
     assert recorded["counted"] == []
 
@@ -420,6 +416,58 @@ def test_bad_instagram_input_is_rejected_before_counting(mcp_server, recorded, i
         _call(mcp_server, name, arguments)
 
     assert recorded["counted"] == [] and instagram_reads == []
+
+
+@pytest.fixture
+def x_reads(monkeypatch):
+    calls = []
+
+    def fake(command):
+        async def read(caller, *args):
+            calls.append((command, caller.user_id, *args))
+            return [{"id": "101"}]
+
+        return read
+
+    for command in ("search", "profile", "tweets", "thread"):
+        monkeypatch.setattr(server_module.x_reads, command, fake(command))
+    return calls
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments", "call"),
+    [
+        ("search_x", {"query": "  from:nasa   moon ", "limit": 3}, ("search", "user-1", "from:nasa moon", 3)),
+        ("get_x_profile", {"username": "@NASA"}, ("profile", "user-1", "NASA")),
+        ("get_x_tweets", {"username": "NASA"}, ("tweets", "user-1", "NASA", 5)),
+        ("get_x_thread", {"tweet": "https://x.com/NASA/status/20", "limit": 20}, ("thread", "user-1", "20", 20)),
+    ],
+    ids=["search", "profile", "tweets", "thread"],
+)
+def test_x_reads_count_one_x_request_and_answer_with_items(mcp_server, recorded, x_reads, name, arguments, call):
+    response = _call(mcp_server, name, arguments)
+
+    assert x_reads == [call]
+    assert recorded["counted"] == [("user-1", "x", 1)]
+    assert recorded["actions"] == []
+    assert response == {"site": "x", "action": call[0], "requests_left_today": 7, "count": 1, "items": [{"id": "101"}]}
+
+
+@pytest.mark.parametrize(
+    ("name", "arguments", "message"),
+    [
+        ("search_x", {"query": "   "}, "query is required"),
+        ("get_x_profile", {"username": "nat.geo"}, "Invalid X username"),
+        ("get_x_tweets", {"username": "NASA", "limit": 21}, "limit must be between 1 and 20"),
+        ("get_x_thread", {"tweet": "not-a-tweet"}, "Invalid tweet"),
+    ],
+    ids=["empty-search", "bad-username", "limit-too-high", "bad-tweet"],
+)
+def test_bad_x_input_is_rejected_before_counting(mcp_server, recorded, x_reads, name, arguments, message):
+    with pytest.raises(Exception, match=message):
+        _call(mcp_server, name, arguments)
+
+    assert recorded["counted"] == [] and x_reads == []
 
 
 def test_instagram_is_no_longer_read_through_agent_reach(mcp_server, recorded):

@@ -8,14 +8,21 @@ https://github.com/jackwener/opencli, version 2.0.2, commit 97dc0cd5214b9602bcda
 Licensed under the Apache License, Version 2.0.
 ================================================================================
 
+The X reads are ported from version 1.8.7 (npm package @jackwener/opencli@1.8.7), the version Agent Reach
+1.6.1 installs and whose X commands were tested live on 2026-11-09.
+
 Files in page_scripts/ (page scripts sent to the browser):
 - dom_stable.js, auto_scroll.js: src/browser/dom-helpers.ts
 - linkedin_auth_probe.js: clis/linkedin/shared.js (buildAuthProbeScript)
 - instagram_read.js: field mapping from clis/instagram/profile.js and user.js
+- x_read.js (1.8.7): clis/twitter/profile.js, user-timeline.js, tweets.js, search.js, thread.js, shared.js and
+  utils.js (web app token, query ids and feature flags, request headers, query-id lookup in X's scripts,
+  profile and tweet mapping, timeline paging)
 
 Python ports:
 - linkedin/page.py: clis/linkedin/shared.js (login-wall check, whitespace clean-up)
 - instagram/page.py: clis/instagram/_shared/read-response.js (error mapping)
+- x/page.py (1.8.7): clis/twitter/shared.js (describeTwitterApiError: error mapping)
 
 Changes made by Tool Store:
 - Each script is cut out of its OpenCLI source file and saved on its own, so Python can send it to the page.
@@ -25,6 +32,11 @@ Changes made by Tool Store:
   404); it reads the profile and its first 12 posts from the JSON data the profile page already carries, falls
   back to the page summary for counts, returns booleans instead of Yes/No, keeps full captions, adds each
   post's link and date, and reports logged-out and "please wait" pages as their own errors.
+- x_read.js holds the four reads Agent Reach offers (search, profile, tweets, thread) in one script. It reads
+  the ct0 cookie from the page instead of the browser's cookie store, looks up a renamed query id in X's own
+  website scripts only after X refuses the built-in one (the GitHub list of query ids is not used), finds
+  tweets and cursors with one shared timeline walk, picks the highest-bitrate video, gives dates in ISO 8601,
+  asks for view counts in threads too, and leaves out link cards, author bios and engagement re-ranking.
 
 ================================================================================
 mcp-server-linkedin

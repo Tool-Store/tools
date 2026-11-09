@@ -2,7 +2,7 @@
 Checks a running Social Media Agent server the way an AI client would.
 
 By default no site is contacted and nothing counts toward the daily limit: the script checks
-that the server answers, lists its 12 functions, and rejects bad input. With --live it also calls
+that the server answers, lists its 14 functions, and rejects bad input. With --live it also calls
 each site once through the user's logged-in sessions and prints what each site returned.
 
 Usage, from the tool folder with the container running:
@@ -29,18 +29,20 @@ EXPECTED_TOOLS = {
     "read_linkedin_job",
     "search_social",
     "get_social_profile",
-    "get_social_posts",
-    "get_x_thread",
     "get_linkedin_profile",
     "get_linkedin_company",
     "search_linkedin_posts",
     "get_instagram_profile",
     "get_instagram_posts",
+    "search_x",
+    "get_x_profile",
+    "get_x_tweets",
+    "get_x_thread",
 }
 INVALID_CALLS = [
     ("search_social", {"site": "linkedin", "query": "python"}, "Unsupported site"),
     ("search_linkedin_jobs", {"query": "python", "limit": 99}, "limit must be between"),
-    ("get_social_profile", {"site": "x", "username": "https://x.com/a"}, "Invalid username"),
+    ("get_x_profile", {"username": "https://x.com/a"}, "Invalid X username"),
     ("read_linkedin_job", {"url": "https://example.com/jobs/view/1"}, "Invalid LinkedIn job URL"),
     ("get_x_thread", {"tweet": "abc"}, "Invalid tweet"),
     ("get_linkedin_profile", {"profile_url": "https://example.com/in/a"}, "Invalid LinkedIn profile URL"),
@@ -57,7 +59,7 @@ LIVE_CALLS = [
     ("search_linkedin_posts", {"keywords": "AI marketing"}),
     ("get_social_profile", {"site": "facebook", "username": "nasa"}),
     ("get_instagram_profile", {"username": "natgeo"}),
-    ("get_social_profile", {"site": "x", "username": "OpenAI"}),
+    ("get_x_profile", {"username": "OpenAI"}),
 ]
 
 Result = Tuple[str, bool, str]
@@ -70,7 +72,7 @@ async def _call(session: ClientSession, name: str, arguments: Dict[str, Any]) ->
 
 async def _check_tools(session: ClientSession) -> List[Result]:
     names = {tool.name for tool in (await session.list_tools()).tools}
-    return [("lists the 7 functions", names == EXPECTED_TOOLS, ", ".join(sorted(names)))]
+    return [(f"lists the {len(EXPECTED_TOOLS)} functions", names == EXPECTED_TOOLS, ", ".join(sorted(names)))]
 
 
 async def _check_invalid_input(session: ClientSession) -> List[Result]:
@@ -85,7 +87,7 @@ async def _check_live(session: ClientSession) -> List[Result]:
     results = [await _check_linkedin(session)]
     for name, arguments in LIVE_CALLS:
         is_error, text = await _call(session, name, arguments)
-        results.append(_live_result(f"{name} {arguments['site']}", is_error, text))
+        results.append(_live_result(f"{name} {arguments}", is_error, text))
     return results
 
 

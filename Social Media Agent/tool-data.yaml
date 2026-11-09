@@ -157,8 +157,65 @@ functions:
           description: "Number of posts to return (default 5, max 12)."
       required: ["username"]
 
+  - name: "search_x"
+    description: "Search X posts (tweets): text, author, date, likes, retweets, replies, views, media and link. X's search operators work, e.g. 'from:NASA moon', '#python', 'lang:en'."
+    actions:
+      - "search x"
+    parameters:
+      type: "object"
+      properties:
+        query:
+          type: "string"
+          description: "What to search for, e.g. 'from:NASA moon'."
+        limit:
+          type: "integer"
+          description: "Number of tweets to return (default 5, max 20)."
+      required: ["query"]
+
+  - name: "get_x_profile"
+    description: "Read an X account's profile: name, bio, location, website, followers, following, tweets, likes, verified, join date."
+    actions:
+      - "get x profile"
+    parameters:
+      type: "object"
+      properties:
+        username:
+          type: "string"
+          description: "X handle without URL, e.g. 'NASA'."
+      required: ["username"]
+
+  - name: "get_x_tweets"
+    description: "Read an X account's latest tweets, newest first and without the pinned one: text, date, likes, retweets, replies, views, media and link."
+    actions:
+      - "get x tweets"
+    parameters:
+      type: "object"
+      properties:
+        username:
+          type: "string"
+          description: "X handle without URL, e.g. 'NASA'."
+        limit:
+          type: "integer"
+          description: "Number of tweets to return (default 5, max 20)."
+      required: ["username"]
+
+  - name: "get_x_thread"
+    description: "Read a tweet with its replies, by tweet id or link."
+    actions:
+      - "get x thread"
+    parameters:
+      type: "object"
+      properties:
+        tweet:
+          type: "string"
+          description: "Tweet id, e.g. '1234567890', or link, e.g. https://x.com/user/status/1234567890"
+        limit:
+          type: "integer"
+          description: "Number of tweets to return, counting the tweet itself (default 5, max 20)."
+      required: ["tweet"]
+
   - name: "search_social"
-    description: "Search Facebook or X posts with the user's logged-in session."
+    description: "Search Facebook posts with the user's logged-in session."
     actions:
       - "search social"
     parameters:
@@ -166,7 +223,7 @@ functions:
       properties:
         site:
           type: "string"
-          enum: ["facebook", "x"]
+          enum: ["facebook"]
           description: "Site to search."
         query:
           type: "string"
@@ -177,7 +234,7 @@ functions:
       required: ["site", "query"]
 
   - name: "get_social_profile"
-    description: "Get a Facebook or X profile by username."
+    description: "Get a Facebook profile by username."
     actions:
       - "get social profile"
     parameters:
@@ -185,40 +242,9 @@ functions:
       properties:
         site:
           type: "string"
-          enum: ["facebook", "x"]
+          enum: ["facebook"]
           description: "Site the profile is on."
         username:
           type: "string"
           description: "Username without URL, e.g. 'natgeo'."
       required: ["site", "username"]
-
-  - name: "get_social_posts"
-    description: "Get recent X tweets of a user."
-    actions:
-      - "get social posts"
-    parameters:
-      type: "object"
-      properties:
-        site:
-          type: "string"
-          enum: ["x"]
-          description: "Site to read posts from."
-        username:
-          type: "string"
-          description: "Username without URL, e.g. 'natgeo'."
-        limit:
-          type: "integer"
-          description: "Number of posts to return (default 5, max 20)."
-      required: ["site", "username"]
-
-  - name: "get_x_thread"
-    description: "Get a tweet with its replies, by tweet id or link."
-    actions:
-      - "get x thread"
-    parameters:
-      type: "object"
-      properties:
-        tweet:
-          type: "string"
-          description: "Tweet id, e.g. '1234567890', or link, e.g. https://x.com/user/status/1234567890"
-      required: ["tweet"]

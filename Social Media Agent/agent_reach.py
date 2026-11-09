@@ -7,20 +7,18 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from command_runner import CommandResult, run_command
-from constants import AGENT_REACH_BINARY, FACEBOOK, LINKEDIN, X
+from constants import AGENT_REACH_BINARY, FACEBOOK, LINKEDIN
 from errors import AgentReachError, login_needed_message
 
 log = logging.getLogger(__name__)
 
-# Agent Reach channel and action names. X is still "twitter" in Agent Reach.
-CHANNELS = {LINKEDIN: "linkedin", FACEBOOK: "facebook", X: "twitter"}
+# Agent Reach channel and action names
+CHANNELS = {LINKEDIN: "linkedin", FACEBOOK: "facebook"}
 LOGIN = "login"
 JOB_SEARCH = "jobs"
 JOB_READ = "read"
 SEARCH = "search"
 PROFILE = "profile"
-THREAD = "thread"
-POSTS = {X: "tweets"}
 
 BROWSER_BACKEND = "opencli"
 

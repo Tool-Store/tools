@@ -18,10 +18,9 @@ X_DOMAINS = ("x.com", "twitter.com")
 
 # Which sites each MCP function supports
 LOGIN_SITES = (LINKEDIN, INSTAGRAM, FACEBOOK, X)
-# Sites still read through Agent Reach (search_social, get_social_profile, get_social_posts)
-SEARCH_SITES = (FACEBOOK, X)
-PROFILE_SITES = (FACEBOOK, X)
-POSTS_SITES = (X,)
+# Sites still read through Agent Reach (search_social, get_social_profile)
+SEARCH_SITES = (FACEBOOK,)
+PROFILE_SITES = (FACEBOOK,)
 
 # ── Request limits ──────────────────────────────────────────────────────────────────────────
 DEFAULT_RESULT_LIMIT = 5
@@ -35,6 +34,11 @@ DEFAULT_DAILY_REQUEST_LIMIT = 50
 # Instagram flags automated use faster than other sites, so it has its own, lower limit.
 INSTAGRAM_DAILY_REQUEST_LIMIT_ENV = "INSTAGRAM_DAILY_REQUEST_LIMIT"
 DEFAULT_INSTAGRAM_DAILY_REQUEST_LIMIT = 20
+# X locks accounts that read a lot, so it has its own limit too.
+X_DAILY_REQUEST_LIMIT_ENV = "X_DAILY_REQUEST_LIMIT"
+DEFAULT_X_DAILY_REQUEST_LIMIT = 30
+# Agent Reach's own pace for X: at least this long between two calls of one user.
+X_MIN_SECONDS_BETWEEN_CALLS = 10
 
 # ── Caller identity (headers added by the Toolstore Tool Router) ────────────────────────────
 JWT_HEADER = "X-Toolstore-JWT"
@@ -52,6 +56,7 @@ LOCAL_USER_ID_ENV = "SOCIAL_AGENT_LOCAL_USER_ID"
 BROWSER_LOGIN_PAGES = {
     LINKEDIN: ("https://www.linkedin.com/login", "li_at"),
     INSTAGRAM: ("https://www.instagram.com/accounts/login/", "sessionid"),
+    X: ("https://x.com/login", "auth_token"),
 }
 LOGIN_WINDOW_SECONDS = 600
 LOGIN_POLL_SECONDS = 2
@@ -137,7 +142,13 @@ INSTAGRAM_READ_COSTS = {"profile": 1, "posts": 1}
 # A profile page carries its first 12 posts; more would need scrolling, which is more activity on the account.
 INSTAGRAM_MAX_POSTS = 12
 
-# ── Agent Reach commands (Instagram, Facebook, X and LinkedIn jobs until they are ported) ───
+# ── X reads ─────────────────────────────────────────────────────────────────────────────────
+# Every read starts on the home page, as a person opening x.com would; a session X does not accept is sent away from it.
+X_HOME_URL = "https://x.com/home"
+# Where X sends a session it does not accept: its login page, or its check for a locked or suspicious account.
+X_LOGIN_WALL_PATHS = ("/i/flow/login", "/login", "/account/access")
+
+# ── Agent Reach commands (Facebook and LinkedIn jobs until they are ported) ─────────────────
 AGENT_REACH_BINARY = "agent-reach"
 # Agent Reach allows its slowest browser actions 120s; leave headroom for start-up.
 COMMAND_TIMEOUT_SECONDS = 150
@@ -156,7 +167,9 @@ MCP_ALLOWED_ORIGINS = ["http://127.0.0.1:*", "http://localhost:*"]
 # No leading '-', so a username can never be read as a command option.
 USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._][A-Za-z0-9._-]{0,99}$")
 TWEET_ID_PATTERN = re.compile(r"^[0-9]{1,25}$")
-TWEET_PATH_PATTERN = re.compile(r"^/[A-Za-z0-9_]{1,15}/status/[0-9]{1,25}/?$")
+TWEET_PATH_PATTERN = re.compile(r"^/[A-Za-z0-9_]{1,15}/status/([0-9]{1,25})/?$")
+# X's own rule for handles: 1-15 letters, digits or '_'.
+X_HANDLE_PATTERN = re.compile(r"^[A-Za-z0-9_]{1,15}$")
 LINKEDIN_JOB_PATH_PATTERN = re.compile(r"^/jobs/view/(?:[^/]+-)?[0-9]+/?$")
 LINKEDIN_PROFILE_PATH_PATTERN = re.compile(r"^/in/([^/]{1,100})/?$")
 # A company page and any page under it, e.g. /company/microsoft/ or /company/microsoft/about/

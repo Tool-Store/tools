@@ -43,38 +43,33 @@ Keep the same `LOGIN_ENCRYPTION_KEY`: a new key makes every saved login unreadab
 ```bash
 docker exec -it social-agent agent-reach setup
 docker exec -it social-agent agent-reach add linkedin
-docker exec -it social-agent agent-reach add instagram
 docker exec -it social-agent agent-reach add facebook
-docker exec -it social-agent agent-reach add twitter
 docker exec -it social-agent agent-reach doctor --text
 ```
 
 ## Log in
 
-### LinkedIn (browser sessions)
+### LinkedIn, Instagram and X (browser sessions)
 
 1. Open `http://localhost:6080/vnc.html` and click **Connect**.
-2. Call `start_login` with `{"site": "linkedin"}` (MCP Inspector, see below).
-3. Log in to LinkedIn in the browser window shown in the viewer. The window closes and the login is saved, encrypted, for that user as soon as LinkedIn sets its session cookie (up to 10 minutes).
+2. Call `start_login` with `{"site": "linkedin"}`, `{"site": "instagram"}` or `{"site": "x"}` (MCP Inspector, see below).
+3. Log in to the site in the browser window shown in the viewer, with its own email or username and password (sign-in with Google is usually blocked in an automated browser). The window closes and the login is saved, encrypted, for that user as soon as the site sets its session cookie (up to 10 minutes). X usually sends a code to the account's email on a new device.
 
-### Instagram, Facebook and X (Agent Reach)
+### Facebook and LinkedIn jobs (Agent Reach)
 
 1. Open `http://localhost:6080/vnc.html` and click **Connect**.
-2. Run `docker exec -it social-agent agent-reach login linkedin`.
+2. Run `docker exec -it social-agent agent-reach login facebook`.
 3. Log in to the site in the browser window shown in the viewer.
-4. Repeat for `instagram`, `facebook` and `twitter`.
+4. Repeat for `linkedin`.
 
 ## Test the actions
 
 ```bash
 docker exec social-agent agent-reach linkedin jobs python --limit 2
-docker exec social-agent agent-reach instagram profile nasa
-docker exec social-agent agent-reach instagram posts nasa --limit 2
 docker exec social-agent agent-reach facebook profile nasa
-docker exec social-agent agent-reach twitter tweets nasa --limit 2
 ```
 
-Add `--help` after an action to see its options, for example `agent-reach instagram posts --help`.
+Add `--help` after an action to see its options, for example `agent-reach facebook profile --help`. LinkedIn profiles, Instagram and X run inside the MCP server, so test them through it (below).
 
 ## Test the MCP server
 

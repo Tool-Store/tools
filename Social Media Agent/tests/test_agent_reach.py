@@ -38,14 +38,6 @@ def test_action_builds_browser_only_command_and_returns_items(fake_run):
     assert calls == [["agent-reach", "linkedin", "jobs", "python developer", "--limit", "2", "--backend", "opencli"]]
 
 
-def test_x_uses_agent_reach_twitter_channel(fake_run):
-    calls, _ = fake_run
-
-    agent_reach.run_action("x", "profile", ["OpenAI"])
-
-    assert calls[0][:3] == ["agent-reach", "twitter", "profile"]
-
-
 def test_missing_items_return_empty_list(fake_run):
     _, reply = fake_run
     _set_reply(reply, {"ok": True})
@@ -95,8 +87,8 @@ def test_items_that_are_not_a_list_of_objects_raise_clear_error(fake_run, items)
     _, reply = fake_run
     _set_reply(reply, {"ok": True, "items": items})
 
-    with pytest.raises(AgentReachError, match="unexpected format for x tweets") as error:
-        agent_reach.run_action("x", "tweets", ["OpenAI"])
+    with pytest.raises(AgentReachError, match="unexpected format for facebook search") as error:
+        agent_reach.run_action("facebook", "search", ["OpenAI"])
     assert error.value.code == agent_reach.UNREADABLE_REPLY
 
 
@@ -151,7 +143,7 @@ def test_agent_reach_commands_never_run_at_the_same_time(monkeypatch):
     monkeypatch.setattr(agent_reach, "run_command", slow_run)
 
     with ThreadPoolExecutor(max_workers=5) as pool:
-        list(pool.map(lambda index: agent_reach.run_action("x", "profile", [f"user{index}"]), range(5)))
+        list(pool.map(lambda index: agent_reach.run_action("facebook", "profile", [f"user{index}"]), range(5)))
 
     assert max(most_at_once) == 1
 
@@ -169,5 +161,5 @@ def test_open_login_failure_raises(fake_run):
     _, reply = fake_run
     _set_reply(reply, {"ok": False, "error": {"code": "UPSTREAM_BROKEN", "message": "browser closed"}}, 1)
 
-    with pytest.raises(AgentReachError, match="x login failed"):
-        agent_reach.open_login("x")
+    with pytest.raises(AgentReachError, match="facebook login failed"):
+        agent_reach.open_login("facebook")

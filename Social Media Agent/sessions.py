@@ -3,8 +3,9 @@ Login and daily usage for the user's sites.
 
 start_login opens a site's login page in the Agent Reach browser; start_browser_login does the same
 for sites on our own browser sessions and saves the user's login once they finish. Both say where
-the user can see the browser. The daily limit counts requests per user and site, so automated use
-stays low enough to protect each user's accounts. Counts are a user record in user_store, so restarts
+the user can see the browser. The daily limit counts requests per user and site, and sites that flag
+quick reading (X) also need a pause between one user's calls, so automated use stays low enough to
+protect each user's accounts. Counts and call times are a user record in user_store, so restarts
 keep them. The lock keeps counts exact within one server process; several Toolstore replicas could each
 let one extra request through at the same moment.
 """
@@ -12,8 +13,10 @@ let one extra request through at the same moment.
 import asyncio
 import json
 import logging
+import math
 import os
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -29,19 +32,28 @@ from constants import (
     DEFAULT_DAILY_REQUEST_LIMIT,
     DEFAULT_INSTAGRAM_DAILY_REQUEST_LIMIT,
     DEFAULT_VIEWER_URL,
+    DEFAULT_X_DAILY_REQUEST_LIMIT,
     INSTAGRAM,
     INSTAGRAM_DAILY_REQUEST_LIMIT_ENV,
     LOGIN_POLL_SECONDS,
     LOGIN_WINDOW_SECONDS,
     VIEWER_URL_ENV,
+    X_DAILY_REQUEST_LIMIT_ENV,
+    X_MIN_SECONDS_BETWEEN_CALLS,
+    X,
 )
-from errors import DailyLimitError, LoginBusyError
+from errors import DailyLimitError, LoginBusyError, RateLimitedError
 
 log = logging.getLogger(__name__)
 
 USAGE_RECORD = "usage"
 # Sites with their own daily limit setting: (setting name, default)
-SITE_DAILY_LIMITS = {INSTAGRAM: (INSTAGRAM_DAILY_REQUEST_LIMIT_ENV, DEFAULT_INSTAGRAM_DAILY_REQUEST_LIMIT)}
+SITE_DAILY_LIMITS = {
+    INSTAGRAM: (INSTAGRAM_DAILY_REQUEST_LIMIT_ENV, DEFAULT_INSTAGRAM_DAILY_REQUEST_LIMIT),
+    X: (X_DAILY_REQUEST_LIMIT_ENV, DEFAULT_X_DAILY_REQUEST_LIMIT),
+}
+# Sites that need a pause between one user's calls: seconds
+SITE_MIN_GAPS = {X: X_MIN_SECONDS_BETWEEN_CALLS}
 
 # Tool calls run in parallel worker threads; counting must not lose updates.
 _usage_lock = threading.Lock()
@@ -92,8 +104,9 @@ def _viewer_reply(site: str, after_login: str) -> Dict[str, str]:
 def count_request(caller: Caller, site: str, page_loads: int = 1) -> int:
     """Count a call's page loads for the user and site and return how many are left today.
 
-    Raises when they do not all fit in what is left, and then counts nothing. Called before the site is
-    contacted, so a call that then fails still counts: the site saw it.
+    Raises when they do not all fit in what is left, or when the call comes sooner than the site's minimum
+    gap after the user's last one, and then counts nothing. Called before the site is contacted, so a call
+    that then fails still counts: the site saw it.
     """
     limit = validators.positive_int_setting(*SITE_DAILY_LIMITS.get(site, (DAILY_REQUEST_LIMIT_ENV, DEFAULT_DAILY_REQUEST_LIMIT)))
     with _usage_lock:
@@ -108,13 +121,34 @@ def count_request(caller: Caller, site: str, page_loads: int = 1) -> int:
                 f"This call needs {page_loads} page loads but only {limit - used} of {limit} are left "
                 f"for {site} today. Ask for fewer sections or pages; the limit resets at 00:00 UTC."
             )
+        _keep_pace(usage, site)
         usage["counts"][site] = used + page_loads
         user_store.save(caller, USAGE_RECORD, usage)
     return limit - used - page_loads
 
 
+def _keep_pace(usage: Dict[str, Any], site: str) -> None:
+    """Refuse a call that comes sooner than the site's minimum gap after the user's last one; else note its time."""
+    gap = SITE_MIN_GAPS.get(site)
+    if gap is None:
+        return
+    now = _now()
+    last_calls = usage.setdefault("last_call", {})
+    wait = gap - (now - last_calls.get(site, 0))
+    if wait > 0:
+        raise RateLimitedError(
+            f"Wait {math.ceil(wait)} more seconds before the next {site} call; "
+            f"calls closer together make {site} flag the account."
+        )
+    last_calls[site] = now
+
+
 def _today() -> str:
     return datetime.now(timezone.utc).date().isoformat()
+
+
+def _now() -> float:
+    return time.time()
 
 
 def _load_usage(caller: Caller) -> Dict[str, Any]:
@@ -125,6 +159,11 @@ def _load_usage(caller: Caller) -> Dict[str, Any]:
         # A damaged counter must not lock the user out for good; start the day's count again.
         log.warning("Usage record is unreadable (%s); starting a new count", exc)
         return fresh
-    if not isinstance(usage, dict) or usage.get("date") != fresh["date"] or not isinstance(usage.get("counts"), dict):
+    if (
+        not isinstance(usage, dict)
+        or usage.get("date") != fresh["date"]
+        or not isinstance(usage.get("counts"), dict)
+        or not isinstance(usage.get("last_call", {}), dict)
+    ):
         return fresh
     return usage

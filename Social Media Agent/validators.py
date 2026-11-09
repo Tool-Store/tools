@@ -23,6 +23,7 @@ from constants import (
     TWEET_PATH_PATTERN,
     USERNAME_PATTERN,
     X_DOMAINS,
+    X_HANDLE_PATTERN,
 )
 
 
@@ -47,6 +48,16 @@ def validate_username(username: str) -> str:
         raise ValueError(
             f"Invalid username '{username}': expected a username such as 'natgeo' "
             "(no URL; letters, digits, '.', '_', '-')."
+        )
+    return candidate
+
+
+def validate_x_handle(username: str) -> str:
+    candidate = (username or "").strip().lstrip("@")
+    if not X_HANDLE_PATTERN.match(candidate):
+        raise ValueError(
+            f"Invalid X username '{username}': expected a handle such as 'NASA' "
+            "(no URL; 1-15 letters, digits or '_')."
         )
     return candidate
 
@@ -128,12 +139,14 @@ def validate_pages(pages: int) -> int:
 
 
 def validate_tweet(tweet: str) -> str:
+    """Return the tweet id, from the id itself or the tweet's link."""
     candidate = (tweet or "").strip()
     if TWEET_ID_PATTERN.match(candidate):
         return candidate
     parts = urlsplit(candidate)
-    if parts.scheme == "https" and _host_matches(parts.hostname, X_DOMAINS) and TWEET_PATH_PATTERN.match(parts.path):
-        return candidate
+    match = TWEET_PATH_PATTERN.match(parts.path)
+    if parts.scheme == "https" and _host_matches(parts.hostname, X_DOMAINS) and match:
+        return match.group(1)
     raise ValueError(
         f"Invalid tweet '{tweet}': expected a tweet id such as '1234567890' "
         "or a link such as https://x.com/user/status/1234567890"

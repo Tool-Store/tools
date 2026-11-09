@@ -2,7 +2,7 @@
 
 Social Media Agent is an MCP tool that reads social media content through each user's own logged-in browser session.
 
-It is moving from running the [Agent Reach](https://github.com/Tool-Store/Agent-Reach) CLI in a per-user container to calling site code directly in one shared container: each request opens a fresh, isolated browser session loaded with that user's saved login, and no CLI runs in between. The site code is ported from [OpenCLI](https://github.com/jackwener/opencli) (Apache-2.0), which Agent Reach called underneath. LinkedIn moves first (all of OpenCLI's LinkedIn commands); Instagram, Facebook and X stay on Agent Reach until LinkedIn is done.
+It is moving from running the [Agent Reach](https://github.com/Tool-Store/Agent-Reach) CLI in a per-user container to calling site code directly in one shared container: each request opens a fresh, isolated browser session loaded with that user's saved login, and no CLI runs in between. The site code is ported from [OpenCLI](https://github.com/jackwener/opencli) (Apache-2.0), which Agent Reach called underneath. LinkedIn moved first, then Instagram and X; Facebook and LinkedIn jobs stay on Agent Reach until they are ported.
 
 It is separate from Social Media Scraper, which reads public data through third-party APIs.
 
@@ -23,7 +23,7 @@ It is separate from Social Media Scraper, which reads public data through third-
 | LinkedIn | `jobs` (search), `read` (job post) | Agent Reach (optional level) |
 | Instagram | `profile`, `posts` (up to 12) | Browser sessions (data the profile page already carries) |
 | Facebook | `search`, `profile` | Agent Reach (experimental) |
-| X / Twitter | `search`, `profile`, `tweets`, `thread` | Agent Reach (experimental) |
+| X / Twitter | `search`, `profile`, `tweets`, `thread` (up to 20 tweets) | Browser sessions (X's own web API from inside x.com) |
 
 LinkedIn: feed, post analytics, profile analytics and services are next (`PLAN.md` batch 2b), then people search, connections, messages, Sales Navigator, and connection requests and messages. Instagram: `search`, `followers`, `following`, `explore` and `saved` come back one at a time after each is checked live (`PLAN.md` phase 5, Phase B); actions (post, reel, story, like, comment, follow) wait for the manager's approval (`PLAN.md` phase 5).
 
@@ -31,7 +31,7 @@ LinkedIn: feed, post analytics, profile analytics and services are next (`PLAN.m
 
 - Python 3.11 (`python:3.11-slim-bookworm`)
 - Patchright (Playwright with automation signs removed) with its Chromium, for browser sessions; page scripts in `page_scripts/`
-- LinkedIn page reading ported from stickerdaniel/linkedin-mcp-server 4.29.0 and OpenCLI 2.0.2 (both Apache-2.0, see `third_party/NOTICE`)
+- LinkedIn page reading ported from stickerdaniel/linkedin-mcp-server 4.29.0 and OpenCLI 2.0.2, X reads from OpenCLI 1.8.7 (all Apache-2.0, see `third_party/NOTICE`)
 - `cryptography` (Fernet) for saved logins
 - Agent Reach CLI, installed from the Tool-Store fork at a pinned commit
 - OpenCLI and Node.js 22 (Agent Reach site adapters)
@@ -40,17 +40,16 @@ LinkedIn: feed, post analytics, profile analytics and services are next (`PLAN.m
 
 ## MCP functions
 
-- `start_login` - Open a site's login page in the user's browser and return the viewer link. For LinkedIn the login is saved for the calling user as soon as it finishes.
+- `start_login` - Open a site's login page in the user's browser and return the viewer link. For LinkedIn, Instagram and X the login is saved for the calling user as soon as it finishes.
 - `get_linkedin_profile` - Read a LinkedIn profile as text (own profile when no link is given), with up to 5 extra sections (experience, education, skills, projects, certifications, languages, honors, volunteering, interests, contact info, posts). Browser session.
 - `get_linkedin_company` - Read a company's About page, plus its posts or jobs. Browser session.
 - `search_linkedin_posts` - Search posts by keywords, optionally by date and content type, 1-3 pages. Browser session.
 - `get_instagram_profile`, `get_instagram_posts` - Instagram reads (posts up to 12). Browser session, one profile page per call, own daily limit (`INSTAGRAM_DAILY_REQUEST_LIMIT`, default 20).
 - `search_linkedin_jobs` - Search LinkedIn jobs.
 - `read_linkedin_job` - Read one LinkedIn job post.
-- `search_social` - Search Facebook or X posts.
-- `get_social_profile` - Get a Facebook or X profile.
-- `get_social_posts` - Get recent X tweets.
-- `get_x_thread` - Get a tweet with its replies.
+- `search_x`, `get_x_profile`, `get_x_tweets`, `get_x_thread` - X reads: search tweets (X's search operators work), an account's profile, its latest tweets, a tweet with its replies. Browser session, one call counts as one request, own daily limit (`X_DAILY_REQUEST_LIMIT`, default 30), and one user's X calls are at least 10 seconds apart.
+- `search_social` - Search Facebook posts.
+- `get_social_profile` - Get a Facebook profile.
 
 Every request uses the browser session only (`--backend opencli` on the Agent Reach path), is limited per user per site per day (`DAILY_REQUEST_LIMIT`, default 50), and returns at most 20 items within 20,000 characters (section answers cut their longest sections instead and name them in `truncated_sections`). On the browser-session path every page a call loads counts as one request, and a call that would go over the limit is refused. A request counts as soon as it passes input checks, even if the site then fails, because the site still received it. When a site rate-limits the account, the error says how long to wait.
 

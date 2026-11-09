@@ -6,8 +6,14 @@ import pytest
 import sessions
 import user_store
 from caller import Caller
-from constants import DAILY_REQUEST_LIMIT_ENV, DEFAULT_VIEWER_URL, INSTAGRAM_DAILY_REQUEST_LIMIT_ENV, VIEWER_URL_ENV
-from errors import DailyLimitError, LoginBusyError, LoginTimeoutError
+from constants import (
+    DAILY_REQUEST_LIMIT_ENV,
+    DEFAULT_VIEWER_URL,
+    INSTAGRAM_DAILY_REQUEST_LIMIT_ENV,
+    VIEWER_URL_ENV,
+    X_DAILY_REQUEST_LIMIT_ENV,
+)
+from errors import DailyLimitError, LoginBusyError, LoginTimeoutError, RateLimitedError
 
 USER = Caller("user-1")
 OTHER = Caller("user-2")
@@ -26,10 +32,10 @@ def _saved_counts(caller=USER):
 
 def test_requests_are_counted_per_site_and_saved(usage):
     assert sessions.count_request(USER, "linkedin") == 1
-    assert sessions.count_request(USER, "x") == 1
+    assert sessions.count_request(USER, "facebook") == 1
     assert sessions.count_request(USER, "linkedin") == 0
 
-    assert user_store.load(USER, "usage") == {"date": "2026-11-02", "counts": {"linkedin": 2, "x": 1}}
+    assert user_store.load(USER, "usage") == {"date": "2026-11-02", "counts": {"linkedin": 2, "facebook": 1}}
 
 
 def test_request_over_daily_limit_is_rejected_and_not_counted(usage):
@@ -54,7 +60,7 @@ def test_parallel_requests_are_all_counted(usage, monkeypatch):
 def test_parallel_requests_never_exceed_the_limit(usage):
     def try_request(_):
         try:
-            sessions.count_request(USER, "x")
+            sessions.count_request(USER, "facebook")
             return True
         except DailyLimitError:
             return False
@@ -63,7 +69,7 @@ def test_parallel_requests_never_exceed_the_limit(usage):
         allowed = list(pool.map(try_request, range(10)))
 
     assert allowed.count(True) == 2
-    assert _saved_counts()["x"] == 2
+    assert _saved_counts()["facebook"] == 2
 
 
 def test_count_resets_on_a_new_day(usage, monkeypatch):
@@ -76,14 +82,17 @@ def test_count_resets_on_a_new_day(usage, monkeypatch):
 
 
 def test_unreadable_usage_record_starts_a_new_count(usage):
-    sessions.count_request(USER, "x")
+    sessions.count_request(USER, "facebook")
     [record] = [path for path in usage.rglob("usage.json")]
     record.write_text("not json")
 
-    assert sessions.count_request(USER, "x") == 1
+    assert sessions.count_request(USER, "facebook") == 1
 
 
-@pytest.mark.parametrize("damaged", ["text", {"date": "2026-11-02"}, {"date": "2026-11-02", "counts": [1]}])
+@pytest.mark.parametrize(
+    "damaged",
+    ["text", {"date": "2026-11-02"}, {"date": "2026-11-02", "counts": [1]}, {"date": "2026-11-02", "counts": {}, "last_call": 5}],
+)
 def test_usage_record_of_the_wrong_shape_starts_a_new_count(usage, damaged):
     user_store.save(USER, "usage", damaged)
 
@@ -114,7 +123,7 @@ def test_start_login_uses_configured_viewer_link(monkeypatch):
     monkeypatch.setattr(sessions.agent_reach, "open_login", lambda site: None)
     monkeypatch.setenv(VIEWER_URL_ENV, "https://viewer.example/u/123")
 
-    assert sessions.start_login("x")["viewer_url"] == "https://viewer.example/u/123"
+    assert sessions.start_login("facebook")["viewer_url"] == "https://viewer.example/u/123"
 
 
 def test_each_user_has_their_own_daily_limit(usage):
@@ -208,7 +217,39 @@ def test_instagram_has_its_own_lower_limit(usage, monkeypatch):
     monkeypatch.delenv(INSTAGRAM_DAILY_REQUEST_LIMIT_ENV, raising=False)
 
     assert sessions.count_request(USER, "instagram", page_loads=3) == 17
-    assert sessions.count_request(USER, "x") == 1
+    assert sessions.count_request(USER, "facebook") == 1
+
+
+def test_x_has_its_own_limit_from_its_own_setting(usage, monkeypatch):
+    monkeypatch.delenv(X_DAILY_REQUEST_LIMIT_ENV, raising=False)
+    assert sessions.count_request(USER, "x") == 29
+
+    monkeypatch.setenv(X_DAILY_REQUEST_LIMIT_ENV, "1")
+    with pytest.raises(DailyLimitError, match="Daily limit of 1 requests for x reached"):
+        sessions.count_request(USER, "x")
+
+
+def test_x_calls_closer_together_than_the_minimum_gap_are_refused_and_not_counted(usage, monkeypatch):
+    monkeypatch.setattr(sessions, "_now", lambda: 1_000.0)
+    sessions.count_request(USER, "x")
+
+    monkeypatch.setattr(sessions, "_now", lambda: 1_004.0)
+    with pytest.raises(RateLimitedError, match="Wait 6 more seconds before the next x call"):
+        sessions.count_request(USER, "x")
+    assert _saved_counts()["x"] == 1
+
+    monkeypatch.setattr(sessions, "_now", lambda: 1_010.0)
+    sessions.count_request(USER, "x")
+    assert _saved_counts()["x"] == 2
+
+
+def test_sites_without_a_minimum_gap_may_be_called_back_to_back(usage, monkeypatch):
+    monkeypatch.setattr(sessions, "_now", lambda: 1_000.0)
+
+    sessions.count_request(USER, "linkedin")
+    sessions.count_request(USER, "linkedin")
+
+    assert _saved_counts()["linkedin"] == 2
 
 
 def test_instagram_limit_comes_from_its_own_setting(usage, monkeypatch):

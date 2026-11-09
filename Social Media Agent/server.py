@@ -1,4 +1,4 @@
-"""MCP server: registers the 12 functions the AI can call."""
+"""MCP server: registers the 14 functions the AI can call."""
 
 import logging
 import os
@@ -33,7 +33,6 @@ from constants import (
     MCP_ALLOWED_ORIGINS,
     POST_CONTENT_TYPES,
     POST_DATE_FILTERS,
-    POSTS_SITES,
     PROFILE_SITES,
     SEARCH_SITES,
     SECONDS_PER_EXTRA_PAGE_LOAD,
@@ -43,6 +42,7 @@ from instagram import reads as instagram_reads
 from linkedin import company as linkedin_company
 from linkedin import posts as linkedin_posts
 from linkedin import profile as linkedin_profile
+from x import reads as x_reads
 
 
 def _setup_logging() -> None:
@@ -125,6 +125,7 @@ def create_server() -> FastMCP:
     _register_login_tool(server)
     _register_linkedin_tools(server)
     _register_instagram_tools(server)
+    _register_x_tools(server)
     _register_social_tools(server)
     return server
 
@@ -229,31 +230,55 @@ def _register_instagram_tools(server: FastMCP) -> None:
         return await run("posts", lambda caller: instagram_reads.posts(caller, name, count))
 
 
+def _register_x_tools(server: FastMCP) -> None:
+    async def run(command: str, read: Callable[[Caller], Awaitable[Any]]) -> List[TextContent]:
+        return await _run_browser_action(X, command, 1, read, responses.fit_items)
+
+    @server.tool()
+    async def search_x(query: str, limit: int = DEFAULT_RESULT_LIMIT) -> List[TextContent]:
+        """Search X posts (tweets): text, author, date, likes, retweets, replies, views, media and link.
+
+        query: what to search for; X's search operators work, e.g. 'from:NASA moon', '#python', 'lang:en'.
+        limit: 1 to 20 tweets (default 5).
+        """
+        text, count = validators.validate_query(query), validators.validate_limit(limit)
+        return await run("search", lambda caller: x_reads.search(caller, text, count))
+
+    @server.tool()
+    async def get_x_profile(username: str) -> List[TextContent]:
+        """Read an X account's profile: name, bio, location, website, followers, following, tweets, likes, verified, join date."""
+        name = validators.validate_x_handle(username)
+        return await run("profile", lambda caller: x_reads.profile(caller, name))
+
+    @server.tool()
+    async def get_x_tweets(username: str, limit: int = DEFAULT_RESULT_LIMIT) -> List[TextContent]:
+        """Read an X account's latest tweets, newest first and without the pinned one (1 to 20, default 5).
+
+        Each tweet has its text, date, likes, retweets, replies, views, media and link.
+        """
+        name, count = validators.validate_x_handle(username), validators.validate_limit(limit)
+        return await run("tweets", lambda caller: x_reads.tweets(caller, name, count))
+
+    @server.tool()
+    async def get_x_thread(tweet: str, limit: int = DEFAULT_RESULT_LIMIT) -> List[TextContent]:
+        """Read a tweet with its replies, by tweet id or link; limit counts the tweet itself (1 to 20, default 5)."""
+        tweet_id, count = validators.validate_tweet(tweet), validators.validate_limit(limit)
+        return await run("thread", lambda caller: x_reads.thread(caller, tweet_id, count))
+
+
 def _register_social_tools(server: FastMCP) -> None:
     @server.tool()
     async def search_social(site: str, query: str, limit: int = DEFAULT_RESULT_LIMIT) -> List[TextContent]:
-        """Search Facebook or X posts with the user's logged-in session."""
+        """Search Facebook posts with the user's logged-in session."""
         site = validators.validate_site(site, SEARCH_SITES)
         options = {"limit": validators.validate_limit(limit)}
         return await _run(site, agent_reach.SEARCH, [validators.validate_query(query)], options)
 
     @server.tool()
     async def get_social_profile(site: str, username: str) -> List[TextContent]:
-        """Get a Facebook or X profile by username."""
+        """Get a Facebook profile by username."""
         site = validators.validate_site(site, PROFILE_SITES)
         return await _run(site, agent_reach.PROFILE, [validators.validate_username(username)])
-
-    @server.tool()
-    async def get_social_posts(site: str, username: str, limit: int = DEFAULT_RESULT_LIMIT) -> List[TextContent]:
-        """Get recent X tweets of a user."""
-        site = validators.validate_site(site, POSTS_SITES)
-        options = {"limit": validators.validate_limit(limit)}
-        return await _run(site, agent_reach.POSTS[site], [validators.validate_username(username)], options)
-
-    @server.tool()
-    async def get_x_thread(tweet: str) -> List[TextContent]:
-        """Get a tweet with its replies, by tweet id or link."""
-        return await _run(X, agent_reach.THREAD, [validators.validate_tweet(tweet)])
 
 
 def main() -> None:

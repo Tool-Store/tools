@@ -137,6 +137,24 @@ The manager chose the same approach as LinkedIn (the user's own login in a priva
 - [ ] Phase B: search, followers, following, explore, saved, one at a time after checking what each page carries live
 - [ ] Docker test
 
+### Phase 6 - Reddit and X (client priority, decided 2026-11-09)
+R&D with Agent Reach 1.6.1 on a laptop (home and mobile networks, test accounts, CloakBrowser), 2026-11-09:
+- Reddit: Agent Reach reads Reddit through OpenCLI, which asks Reddit's `.json` addresses from inside reddit.com. Plain automated Chrome was blocked at the first login ("too many requests"); CloakBrowser logged in, but every data request was refused ("blocked by network security"), also in a normal Chrome, logged in or not, on two networks. Reddit's Responsible Builder Policy requires written approval for any commercial data access. Decision: Reddit's official Data API, after Reddit approves the request; no browser-session reading of Reddit (it would also risk the approved app).
+- X: all 4 Agent Reach actions worked with CloakBrowser (18 reads in about 15 minutes: search with operators and 30 results across pages, profiles, tweets, threads with replies; 5-10 s each). Login asked for an email code, no captcha, no warning; the session still worked afterwards. Open: account safety over several days, and from a cloud IP.
+
+X on browser sessions (ported from OpenCLI 1.8.7, the version tested live):
+- [x] `x/page.py`, `x/reads.py`, `page_scripts/x_read.js`: `search_x`, `get_x_profile`, `get_x_tweets`, `get_x_thread` (up to 20 tweets; thread counts the tweet itself), from x.com's home page through X's own web API; a renamed query id is looked up in X's own website scripts (no third-party list)
+- [x] X login through `start_login` (`auth_token` cookie); X removed from the Agent Reach path; `get_social_posts` removed (replaced by `get_x_tweets`); `search_social` and `get_social_profile` are Facebook only
+- [x] Own daily limit (`X_DAILY_REQUEST_LIMIT`, default 30, 1 per call) and at least 10 seconds between one user's X calls
+- [x] Real-browser tests against a local fake x.com that only answers with the session cookies and the anti-forgery header; 379 tests pass
+- [x] Docs: PROJECT.md, ARCHITECTURE_INDEX.md, README.md, tool-data.yaml (matches server.py), .env.example, third_party/NOTICE, scripts/smoke_test.py (its live check no longer fails on functions without a `site` argument)
+- [x] Local live test with the X test account (2026-11-09): login through our window (Patchright) worked with an email code, no captcha, no warning (the first login page was blank until a refresh; the window now opens `x.com/login`, to be rechecked at the next login); all 4 functions worked (8 reads), plus not-found, invalid-name and 10-second-gap errors
+- [x] Bug found live (2026-11-09): `get_x_thread` gave 0 views for every tweet because its request did not ask for view counts (also missing in OpenCLI); fixed, with a fake x.com that leaves views out unless asked
+- [x] Docker test (2026-11-09): image builds, X login through the viewer worked (`x.com/login` loaded straight away, no blank page), all 4 functions worked. The first call in a fresh container also starts the hidden browser and took over 10 seconds, so the MCP Inspector's default 10-second timeout cancelled it; with 60 seconds every call returned.
+- [ ] Check how long Toolstore waits for a tool call: X calls take about 5-15 seconds, longer on the first call after a start
+- [ ] 2-3 days with the test account on dev before real users
+- [ ] Reddit: request commercial Data API access (one request, from a dedicated account); build on the API once approved
+
 Before any cloud use
 - [x] User records on Toolstore (2026-11-05): logins and daily counts in the user's Toolstore data (`user_store.py`, own sub-collection), read with the request's user token and `X-Internal-Token`, so the Dev API checks who is asking; no secret in the tool and no volume needed. Backend fix the same day: the Dev API now refuses another user's data (403).
 - [ ] The login viewer is one shared screen: any user with the link sees whoever is logging in. Replace it with a per-user login page (one-time link, private browser, same port) before dev.

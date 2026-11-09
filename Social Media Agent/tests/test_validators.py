@@ -54,6 +54,17 @@ def test_invalid_username_is_rejected(username):
         validators.validate_username(username)
 
 
+@pytest.mark.parametrize(("handle", "expected"), [(" @NASA ", "NASA"), ("jack_dorsey", "jack_dorsey"), ("a" * 15, "a" * 15)])
+def test_x_handles_are_accepted_without_the_at_sign(handle, expected):
+    assert validators.validate_x_handle(handle) == expected
+
+
+@pytest.mark.parametrize("handle", ["", "@", "a" * 16, "nat.geo", "nat-geo", "https://x.com/nasa", "--help"])
+def test_invalid_x_handle_is_rejected(handle):
+    with pytest.raises(ValueError, match="Invalid X username"):
+        validators.validate_x_handle(handle)
+
+
 @pytest.mark.parametrize("limit", [1, MAX_RESULT_LIMIT])
 def test_limit_bounds_are_accepted(limit):
     assert validators.validate_limit(limit) == limit
@@ -96,8 +107,8 @@ def test_invalid_linkedin_job_url_is_rejected(url):
     "tweet",
     ["1234567890", "https://x.com/OpenAI/status/1234567890", "https://mobile.twitter.com/OpenAI/status/1234567890/"],
 )
-def test_tweet_id_or_link_is_accepted(tweet):
-    assert validators.validate_tweet(tweet) == tweet
+def test_tweet_id_or_link_gives_the_tweet_id(tweet):
+    assert validators.validate_tweet(tweet) == "1234567890"
 
 
 @pytest.mark.parametrize(
